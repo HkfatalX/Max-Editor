@@ -1,0 +1,10 @@
+{
+  "appId": "com.maxeditor.app",
+  "appName": "Max Editor",
+  "webDir": "www",
+  "backgroundColor": "#070b16",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#070b16"
+  }
+}

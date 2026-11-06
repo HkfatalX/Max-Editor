@@ -1,0 +1,75 @@
+// Max Editor — prepara os arquivos do app Android (usado pelo GitHub Actions)
+//   node scripts/prepare.mjs web      → copia o site para ./www (conteúdo do APK)
+//   node scripts/prepare.mjs android  → ajusta permissões, ícones, nome e versão do projeto Android
+import fs from 'node:fs';
+import path from 'node:path';
+
+const root = process.cwd();
+const mode = process.argv[2];
+const ver = JSON.parse(fs.readFileSync(path.join(root, 'version.json'), 'utf8')).version;
+
+function copyDir(src, dst) {
+  fs.mkdirSync(dst, { recursive: true });
+  for (const e of fs.readdirSync(src, { withFileTypes: true })) {
+    const s = path.join(src, e.name), d = path.join(dst, e.name);
+    if (e.isDirectory()) copyDir(s, d); else fs.copyFileSync(s, d);
+  }
+}
+
+if (mode === 'web') {
+  const www = path.join(root, 'www');
+  fs.rmSync(www, { recursive: true, force: true });
+  fs.mkdirSync(www, { recursive: true });
+  for (const f of ['index.html', 'manifest.webmanifest', 'version.json']) fs.copyFileSync(path.join(root, f), path.join(www, f));
+  for (const d of ['css', 'js', 'assets']) copyDir(path.join(root, d), path.join(www, d));
+  fs.rmSync(path.join(www, 'assets', 'android-icons'), { recursive: true, force: true });
+  console.log('www pronto (versão ' + ver + ')');
+} else if (mode === 'android') {
+  const app = path.join(root, 'android', 'app');
+  const res = path.join(app, 'src', 'main', 'res');
+
+  // --- permissões ---
+  const mf = path.join(app, 'src', 'main', 'AndroidManifest.xml');
+  let x = fs.readFileSync(mf, 'utf8');
+  const perms = [
+    '<uses-permission android:name="android.permission.INTERNET" />',
+    '<uses-permission android:name="android.permission.RECORD_AUDIO" />',
+    '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />',
+    '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />',
+    '<uses-feature android:name="android.hardware.microphone" android:required="false" />',
+  ];
+  for (const p of perms) {
+    const name = /android:name="([^"]+)"/.exec(p)[1];
+    if (!x.includes(`"${name}"`)) x = x.replace(/<application/, `${p}\n    <application`);
+  }
+  fs.writeFileSync(mf, x);
+
+  // --- ícones (foto do usuário) ---
+  const iconsSrc = path.join(root, 'assets', 'android-icons');
+  for (const d of fs.readdirSync(iconsSrc)) copyDir(path.join(iconsSrc, d), path.join(res, d));
+  const any = path.join(res, 'mipmap-anydpi-v26');
+  fs.rmSync(any, { recursive: true, force: true });
+  fs.mkdirSync(any, { recursive: true });
+  const adaptive = '<?xml version="1.0" encoding="utf-8"?>\n<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n  <background android:drawable="@color/max_icon_bg"/>\n  <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n</adaptive-icon>\n';
+  fs.writeFileSync(path.join(any, 'ic_launcher.xml'), adaptive);
+  fs.writeFileSync(path.join(any, 'ic_launcher_round.xml'), adaptive);
+  fs.mkdirSync(path.join(res, 'values'), { recursive: true });
+  fs.writeFileSync(path.join(res, 'values', 'max_colors.xml'), '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n  <color name="max_icon_bg">#03060F</color>\n</resources>\n');
+
+  // --- nome e versão ---
+  const sf = path.join(res, 'values', 'strings.xml');
+  if (fs.existsSync(sf)) {
+    let s = fs.readFileSync(sf, 'utf8');
+    s = s.replace(/(<string name="app_name">)[^<]*(<\/string>)/, '$1Max Editor$2').replace(/(<string name="title_activity_main">)[^<]*(<\/string>)/, '$1Max Editor$2');
+    fs.writeFileSync(sf, s);
+  }
+  const gf = path.join(app, 'build.gradle');
+  let g = fs.readFileSync(gf, 'utf8');
+  const code = Number(process.env.GITHUB_RUN_NUMBER || 1);
+  g = g.replace(/versionCode\s+\d+/, `versionCode ${code}`).replace(/versionName\s+"[^"]*"/, `versionName "${ver}"`);
+  fs.writeFileSync(gf, g);
+  console.log(`android ajustado: versionName ${ver}, versionCode ${code}`);
+} else {
+  console.error('uso: node scripts/prepare.mjs web|android');
+  process.exit(1);
+}

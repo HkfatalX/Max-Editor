@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#070b16">
+<meta name="color-scheme" content="dark">
+<title>Max Editor</title>
+<meta name="description" content="Max Editor: editor de vídeo leve e rápido para celular e PC. Timeline, texto, filtros, áudio, várias proporções e salvamento automático.">
+<meta property="og:title" content="Max Editor">
+<meta property="og:description" content="Editor de vídeo leve e rápido para celular e PC.">
+<meta property="og:image" content="assets/icons/icon-512.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="assets/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ===== TELA INICIAL ===== -->
+  <section id="home" class="screen">
+    <div class="home-hero">
+      <div class="hero-top">
+        <span class="ver-chip" id="verLabel">v—</span>
+        <button class="icon-btn" id="btnSettings" aria-label="Configurações" data-ic="gear"></button>
+      </div>
+      <div class="hero-brand">
+        <img class="logo" src="assets/icons/icon-192.png" alt="Max Editor" width="64" height="64">
+        <div>
+          <h1>Max Editor</h1>
+          <p>Edite vídeos sem travar, em qualquer aparelho.</p>
+        </div>
+      </div>
+    </div>
+    <main class="home-main">
+      <button class="cta" id="btnNew"><span data-ic="plus"></span>Novo projeto</button>
+      <button class="btn install" id="btnInstall" hidden><span data-ic="download"></span><span>Instalar o app</span></button>
+      <div class="sec-head"><h2>Meus projetos</h2><span id="projCount" class="muted"></span></div>
+      <div id="projList" class="proj-grid"></div>
+      <p id="projEmpty" class="muted empty" hidden>Nenhum projeto ainda. Toque em “Novo projeto” para começar.</p>
+    </main>
+  </section>
+
+  <!-- ===== EDITOR ===== -->
+  <section id="editor" class="screen" hidden>
+    <header class="topbar" style="grid-area:top">
+      <button class="icon-btn" id="btnHome" aria-label="Voltar" data-ic="back"></button>
+      <button class="proj-name" id="projName" title="Renomear">Projeto</button>
+      <span class="save-state" id="saveState">Salvo</span>
+      <button class="icon-btn" id="btnUndo" aria-label="Desfazer" data-ic="undo" disabled></button>
+      <button class="icon-btn" id="btnRedo" aria-label="Refazer" data-ic="redo" disabled></button>
+      <button class="btn primary small" id="btnExport"><span data-ic="export"></span><span>Exportar</span></button>
+    </header>
+
+    <main class="stage" id="stage" style="grid-area:stage">
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="cv"></canvas>
+        <div class="empty-hint" id="emptyHint">
+          <p>Adicione vídeos, fotos ou áudios para começar</p>
+          <button class="btn primary" id="btnEmptyAdd"><span data-ic="plus"></span><span>Adicionar mídia</span></button>
+        </div>
+      </div>
+    </main>
+
+    <div class="transport" style="grid-area:trans">
+      <button class="icon-btn play" id="btnPlay" aria-label="Reproduzir" data-ic="play"></button>
+      <span class="time" id="timeLabel">00:00.0 / 00:00.0</span>
+      <span class="spacer"></span>
+      <button class="chip" id="btnRatio" title="Proporção">9:16</button>
+      <button class="icon-btn" id="btnZoomOut" aria-label="Diminuir zoom" data-ic="zoomout"></button>
+      <button class="icon-btn" id="btnZoomIn" aria-label="Aumentar zoom" data-ic="zoomin"></button>
+      <button class="icon-btn" id="btnFit" aria-label="Ajustar timeline" data-ic="fit"></button>
+    </div>
+
+    <div class="timeline" id="timeline" style="grid-area:tl"></div>
+
+    <nav class="toolbar" id="toolbar" style="grid-area:tool" aria-label="Ferramentas"></nav>
+
+    <aside class="sheet" id="sheet" style="grid-area:side" hidden>
+      <div class="sheet-head"><b id="sheetTitle"></b><button class="icon-btn" id="sheetClose" aria-label="Fechar" data-ic="check"></button></div>
+      <div class="sheet-body" id="sheetBody"></div>
+    </aside>
+  </section>
+</div>
+
+<div id="modals"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="fileIn" hidden multiple>
+
+<noscript><p style="padding:24px;color:#fff">O Max Editor precisa de JavaScript para funcionar.</p></noscript>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

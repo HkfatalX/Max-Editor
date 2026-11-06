@@ -1,0 +1,45 @@
+// Max Editor — ícones SVG (traço, 24x24)
+const P = {
+  plus: 'M12 5v14M5 12h14',
+  play: 'M7 4.5v15l13-7.5z',
+  pause: 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z',
+  undo: 'M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3',
+  redo: 'm15 14 5-5-5-5M20 9H10a6 6 0 0 0 0 12h3',
+  split: 'M12 3v18M8 7l-4 5 4 5M16 7l4 5-4 5',
+  trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
+  copy: 'M9 9h11v11H9zM5 15V4h10',
+  text: 'M5 7V4h14v3M12 4v16M9 20h6',
+  music: 'M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
+  mic: 'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
+  video: 'M3 6h12v12H3zM15 10l6-3v10l-6-3',
+  image: 'M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6',
+  layers: 'M12 3 3 8l9 5 9-5zM3 13l9 5 9-5',
+  ratio: 'M6 2v16h16M2 6h16v16',
+  adjust: 'M3 6h8M15 6h6M3 12h4M11 12h10M3 18h10M17 18h4M13 4v4M9 10v4M15 16v4',
+  filter: 'M12 3l2.6 5.9 6.4.6-4.8 4.3 1.4 6.3L12 16.9 6.4 20.1 7.8 13.8 3 9.5l6.4-.6z',
+  speed: 'M12 14l4-4M4 18a9 9 0 1 1 16 0',
+  volume: 'M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11',
+  anim: 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6',
+  trans: 'M3 12h6M15 12h6M9 8l-4 4 4 4M15 8l4 4-4 4',
+  export: 'M12 16V4M7 9l5-5 5 5M4 20h16',
+  back: 'M15 5l-7 7 7 7',
+  close: 'M6 6l12 12M18 6 6 18',
+  gear: 'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2',
+  rotate: 'M20 12a8 8 0 1 1-3-6.2M20 4v5h-5',
+  flip: 'M12 3v18M8 7l-5 5 5 5zM16 7l5 5-5 5z',
+  check: 'M5 12l5 5 9-11',
+  zoomin: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM16 16l5 5M11 8v6M8 11h6',
+  zoomout: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM16 16l5 5M8 11h6',
+  download: 'M12 4v12M7 11l5 5 5-5M4 20h16',
+  fit: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+  more: 'M12 6h.01M12 12h.01M12 18h.01',
+  edit: 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4',
+  palette: 'M12 3a9 9 0 0 0 0 18c1.5 0 2-1 1.5-2.2-.5-1.3.2-2.3 1.5-2.3H17a4 4 0 0 0 4-4C21 6.5 17 3 12 3z',
+  info: 'M12 11v6M12 7h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z',
+  refresh: 'M20 11a8 8 0 0 0-14-4M4 4v4h4M4 13a8 8 0 0 0 14 4M20 20v-4h-4',
+};
+const FILL = new Set(['play', 'pause']);
+export function icon(name, cls = '') {
+  const d = P[name] || P.plus;
+  return `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" ${FILL.has(name) ? 'fill="currentColor" stroke="none"' : 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'}/></svg>`;
+}
