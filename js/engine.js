@@ -205,6 +205,7 @@ export class Engine {
   constructor(store) {
     this.store = store;
     this.canvas = null; this.ctx = null; this.W = 2; this.H = 2;
+    this.imgFailed = new Set();
     this.time = 0; this.playing = false; this.exporting = false;
     this.tier = deviceTier();
     this.quality = 1; this.maxLong = PREVIEW_LONG[this.tier];
@@ -389,7 +390,13 @@ export class Engine {
     this.imgLoading.add(id);
     (async () => {
       try {
-        let bmp = await createImageBitmap(m.blob);
+        let bmp;
+        try { bmp = await createImageBitmap(m.blob); }
+        catch {
+          const im = new Image(); im.decoding = 'async'; im.src = m.url;
+          await im.decode();
+          bmp = await createImageBitmap(im);
+        }
         const MAX = 2048, big = Math.max(bmp.width, bmp.height);
         if (big > MAX) {
           const s = MAX / big;
@@ -399,7 +406,7 @@ export class Engine {
           } catch { /* mantém original */ }
         }
         this.images.set(id, bmp);
-      } catch (e) { console.warn('imagem', e); }
+      } catch (e) { console.warn('imagem', e); this.imgFailed.add(id); }
       this.imgLoading.delete(id);
       this.requestRender();
     })();
@@ -439,18 +446,19 @@ export class Engine {
     }
     const bt = c.beat;
     if (bt && bt.type !== 'none' && bt.amt > 0) {
+      const ev = Math.max(1, bt.every || 1);
       let dt = -1, n = 0;
-      if (bt.bpm > 0) { const per = 60 / bt.bpm; dt = ((t % per) + per) % per; n = Math.floor(t / per); }
+      if (bt.bpm > 0) { const per = (60 / bt.bpm) * ev; dt = ((t % per) + per) % per; n = Math.floor(t / per); }
       else {
         const mk = this.store.p.markers || [];
         let lo = 0, hi = mk.length - 1, f = -1;
         while (lo <= hi) { const mid = (lo + hi) >> 1; if (mk[mid] <= t) { f = mid; lo = mid + 1; } else hi = mid - 1; }
-        if (f >= 0) { dt = t - mk[f]; n = f; }
+        if (f >= 0) { f -= f % ev; dt = t - mk[f]; n = f / ev; }
       }
       if (dt >= 0) {
-        const e = Math.exp(-dt * 9) * bt.amt, sg = n % 2 ? -1 : 1;
+        const e = Math.exp(-dt * (bt.decay || 9)) * bt.amt, sg = n % 2 ? -1 : 1, dir = bt.dir === -1 ? -1 : 1;
         switch (bt.type) {
-          case 'bop': r.dy -= 0.035 * e; r.s *= 1 + 0.07 * e; break;
+          case 'bop': r.dy -= 0.035 * e * dir; r.s *= 1 + 0.07 * e; break;
           case 'zoom': r.s *= 1 + 0.18 * e; break;
           case 'shake': r.dx += Math.sin(t * 90) * 0.02 * e; r.dy += Math.cos(t * 77) * 0.02 * e; break;
           case 'spin': r.rot += sg * 10 * e; r.s *= 1 + 0.05 * e; break;
@@ -620,6 +628,7 @@ export class Engine {
     const vis = p.clips.filter((c) => (c.lane === 0 || c.lane === 1) && (c.type === 'video' || c.type === 'image') && act(c))
       .sort((a, b) => a.lane - b.lane || a.start - b.start);
     for (const c of vis) this.drawMedia(ctx, W, H, c, t);
+    if (vis.some((c) => c.type === 'image' && this.imgFailed.has(c.mediaId))) { ctx.save(); ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, H / 2 - H * 0.05, W, H * 0.1); ctx.fillStyle = '#fff'; ctx.font = `${Math.round(H * 0.03)}px system-ui,sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('Não consegui abrir esta imagem — remova e adicione de novo', W / 2, H / 2); ctx.restore(); }
     this.drawTransitions(ctx, W, H, t);
     for (const c of p.clips) if (c.type === 'text' && act(c)) this.drawText(ctx, W, H, c, t);
     if (opts.overlay) this.drawSelection(ctx);

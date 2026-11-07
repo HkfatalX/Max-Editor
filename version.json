@@ -1,12 +1,10 @@
 {
-  "version": "1.3.0",
+  "version": "1.4.0",
   "notes": [
-    "HeadBop e efeitos na batida (zoom, tremor, giro, balanço) com Auto HeadBop em 1 toque",
-    "Miniaturas ao longo do vídeo na timeline",
-    "Botão de transição entre clipes (como no CapCut)",
-    "Silenciar / Ativar áudio rápido",
-    "8 filtros e 3 transições novos",
-    "Correção: tocar no clipe, no + e na transição agora funciona sempre"
+    "Corrigido: erro ao adicionar imagem (InvalidBlob) e prévia preta no Android",
+    "HeadBop novo em 3 passos: Ritmo (detectar, tocar e marcar, BPM), Estilo e Ajuste fino",
+    "Converter batida em keyframes editáveis",
+    "Filtros, Efeitos e Batida direto na barra inicial"
   ],
   "apkUrl": "https://github.com/HkfatalX/Max-Editor/releases/latest/download/MaxEditor.apk"
 }

@@ -64,33 +64,90 @@ async function detectMarkers(store) {
 }
 const BEAT_MSG = { '-1': 'Adicione uma música ou vídeo com áudio primeiro.', '-2': 'Não consegui ler o áudio deste arquivo.', 0: 'Nenhuma batida clara encontrada. Use o BPM manual.' };
 
+function beatTimes(store, bt) {
+  const mk = (store.p.markers || []).slice().sort((a, b) => a - b), ev = Math.max(1, bt.every || 1);
+  return mk.filter((_, i) => i % ev === 0);
+}
+// Converte o efeito de batida em keyframes editáveis (como no Alight Motion)
+function bakeBeat(store, id, toast) {
+  const c = store.clip(id); if (!c) return;
+  if (c.kf && c.kf.length) { toast('Este clipe já tem keyframes. Limpe-os antes.'); return; }
+  const bt = c.beat, times = beatTimes(store, bt).filter((t) => t >= c.start - 0.01 && t < c.start + c.dur);
+  if (!times.length) { toast('Sem batidas dentro deste clipe'); return; }
+  if (times.length > 120) { toast('Muitas batidas (máx. 120). Use “A cada 2 batidas”.'); return; }
+  const base = { x: c.x, y: c.y, scale: c.scale, rot: c.rot, opacity: c.opacity }, kf = [];
+  const dir = bt.dir === -1 ? -1 : 1, a = bt.amt;
+  times.forEach((tb, i) => {
+    const lt = Math.max(0, tb - c.start), nxt = times[i + 1] !== undefined ? times[i + 1] - c.start : c.dur;
+    const tail = Math.min(0.4, Math.max(0.08, nxt - lt - 0.03)), sg = i % 2 ? -1 : 1;
+    const pk = Object.assign({}, base);
+    if (bt.type === 'bop') { pk.y = base.y - 0.035 * a * dir; pk.scale = base.scale * (1 + 0.07 * a); }
+    else if (bt.type === 'zoom') pk.scale = base.scale * (1 + 0.18 * a);
+    else if (bt.type === 'spin') { pk.rot = base.rot + sg * 10 * a; pk.scale = base.scale * (1 + 0.05 * a); }
+    else if (bt.type === 'wobble') { pk.rot = base.rot + sg * 5 * a; pk.scale = base.scale * (1 + 0.04 * a); }
+    else if (bt.type === 'shake') { pk.x = base.x + 0.02 * a * sg; pk.y = base.y - 0.02 * a; }
+    if (lt > 0.03) kf.push(Object.assign({ t: +(lt - 0.02).toFixed(3) }, base));
+    kf.push(Object.assign({ t: +lt.toFixed(3) }, pk));
+    kf.push(Object.assign({ t: +Math.min(c.dur, lt + tail).toFixed(3) }, base));
+  });
+  const out = []; for (const k of kf) { const l = out[out.length - 1]; if (!l || k.t > l.t + 0.005) out.push(k); }
+  store.mutate(() => { c.kf = out; c.beat = Object.assign({}, c.beat, { type: 'none' }); });
+  toast(`${out.length} keyframes criados — edite na aba Keyframes ✓`, 4000);
+}
+
 function buildBeat(root, ctx) {
-  const { store, toast } = ctx;
+  const { store, toast, engine } = ctx;
   const c = store.selected();
   const cur = () => store.clip(c.id) || c;
-  const setB = (patch) => store.update(c.id, { beat: patch }, 'beat');
-  const info = h('p', { class: 'note' });
-  const refresh = () => { const n = (store.p.markers || []).length; info.textContent = cur().beat.bpm > 0 ? `Usando BPM manual: ${cur().beat.bpm}.` : n ? `${n} batida(s) detectada(s) — marcadas em amarelo.` : 'Ainda sem batidas. Toque em “Detectar batidas” ou use o BPM manual.'; };
-  refresh();
-  const apply = (type, all) => {
-    store.mutate((p) => { for (const x of p.clips) if ((all ? x.type !== 'audio' : x.id === c.id)) x.beat = Object.assign({}, x.beat, { type }); });
+  let scope = 'all';
+  const setB = (patch) => { if (scope === 'all') store.mutate((p) => { for (const x of p.clips) if (x.type !== 'audio') x.beat = Object.assign({}, x.beat, patch); }, 'beatall'); else store.update(c.id, { beat: patch }, 'beat'); };
+  const count = h('div', { class: 'beat-count' });
+  const refresh = () => { const n = (store.p.markers || []).length; count.textContent = n ? `${n} batida(s) marcada(s)` : 'Nenhuma batida marcada ainda'; count.classList.toggle('ok', n > 0); };
+  const playBtn = btn(engine.playing ? 'Pausar' : 'Tocar', 'play', () => { engine.toggle(); playBtn.querySelector('span').textContent = engine.playing ? 'Pausar' : 'Tocar'; });
+  const mark = () => {
+    const t = +engine.time.toFixed(3), mk = (store.p.markers || []).slice();
+    if (mk.some((m) => Math.abs(m - t) < 0.08)) return;
+    mk.push(t); mk.sort((a, b) => a - b); store.mutate((p) => { p.markers = mk; }, 'mark'); refresh();
   };
-  root.append(
-    section('Auto HeadBop (1 toque)', h('div', { class: 'btn-row' }, btn('HeadBop em todos os clipes', 'spark', async () => {
-      toast('Analisando música…', 15000);
-      const n = await detectMarkers(store);
-      if (n <= 0 && !(cur().beat.bpm > 0)) { toast(BEAT_MSG[n] || BEAT_MSG[0], 4500); return; }
-      apply('bop', true); toast('HeadBop aplicado ✓'); ctx.openSheet('beat');
-    }, 'primary')), h('p', { class: 'note' }, 'Detecta o ritmo da música e faz o vídeo “pular” em cada batida.')),
-    section('Efeito na batida', chips(BEATS, cur().beat.type, (id) => apply(id, false)),
-      slider({ label: 'Força', min: 0.2, max: 2, step: 0.05, value: cur().beat.amt, fmt: (v) => Math.round(v * 100) + '%', onInput: (v) => setB({ amt: v }) }),
-      h('div', { class: 'btn-row' }, btn('Aplicar em todos', 'layers', () => { store.mutate((p) => { for (const x of p.clips) if (x.type !== 'audio') x.beat = Object.assign({}, x.beat, { type: cur().beat.type, amt: cur().beat.amt, bpm: cur().beat.bpm }); }); toast('Aplicado em todos os clipes'); }))),
-    section('De onde vêm as batidas',
-      h('div', { class: 'btn-row' }, btn('Detectar batidas', 'music', async () => { const n = await detectMarkers(store); if (n > 0) setB({ bpm: 0 }); toast(n > 0 ? `${n} batidas marcadas` : (BEAT_MSG[n] || BEAT_MSG[0]), 4000); refresh(); }),
-        btn('Marcador aqui', 'diamond', () => { store.mutate((p) => { p.markers = (p.markers || []).concat([+ctx.engine.time.toFixed(3)]).sort((a, b) => a - b); }); refresh(); }),
-        btn('Limpar', 'close', () => { store.mutate((p) => { p.markers = []; }); refresh(); })),
-      slider({ label: 'BPM manual', min: 0, max: 200, step: 1, value: cur().beat.bpm, fmt: (v) => (v ? v + ' BPM' : 'auto'), onInput: (v) => { setB({ bpm: v }); refresh(); } }),
-      info));
+  const markBtn = h('button', { class: 'bigmark', type: 'button' }, '● Marcar batida');
+  markBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); mark(); markBtn.classList.add('hit'); setTimeout(() => markBtn.classList.remove('hit'), 120); });
+  refresh();
+
+  root.append(tabs('beat', [
+    { id: 'rhythm', label: '1 · Ritmo', build: () => {
+      const st = h('p', { class: 'note' }, 'Use a música: detecte automático ou toque no ritmo enquanto ela toca.');
+      return h('div', {},
+        section('Automático', h('div', { class: 'btn-row' }, btn('Detectar batidas da música', 'spark', async () => {
+          st.textContent = 'Analisando…'; const n = await detectMarkers(store);
+          st.textContent = n > 0 ? `${n} batidas encontradas (amarelo na timeline). Vá para “2 · Estilo”.` : (BEAT_MSG[n] || BEAT_MSG[0]); refresh();
+        }, 'primary'))),
+        section('Manual (como no CapCut)', h('div', { class: 'btn-row' }, playBtn), markBtn,
+          h('p', { class: 'note' }, 'Toque em Tocar e, a cada batida, toque no botão rosa. Dá para marcar com o vídeo parado também (posição da linha branca).'),
+          h('div', { class: 'btn-row' }, btn('Desfazer última', 'undo', () => { const mk = (store.p.markers || []).slice(); mk.pop(); store.mutate((p) => { p.markers = mk; }); refresh(); }), btn('Limpar tudo', 'trash', () => { store.mutate((p) => { p.markers = []; }); refresh(); }))),
+        section('Por BPM', slider({ label: 'BPM', min: 60, max: 200, step: 1, value: 120, fmt: (v) => v + ' BPM', onChange: (bpm) => {
+          const per = 60 / bpm, end = Math.max(store.duration(), 1), mk = []; for (let t = 0; t < end; t += per) mk.push(+t.toFixed(3));
+          store.mutate((p) => { p.markers = mk; }); refresh(); toast(`${mk.length} batidas geradas`);
+        } }), h('p', { class: 'note' }, 'Solte o controle para gerar a grade. Ajuste a posição depois movendo o início do vídeo ou apagando e remarcando.')),
+        count, st);
+    } },
+    { id: 'style', label: '2 · Estilo', build: () => {
+      const hint = h('p', { class: 'note' }, 'Toque em Ver para assistir o efeito nas batidas.');
+      const b = cur().beat;
+      return h('div', {},
+        chips([['sel', 'Só este clipe'], ['all', 'Todos os clipes']], scope, (id) => { scope = id; }),
+        section('Efeito', chips(BEATS, b.type, (id) => setB({ type: id }))),
+        slider({ label: 'Força', min: 0.2, max: 2.5, step: 0.05, value: b.amt, fmt: (v) => Math.round(v * 100) + '%', onInput: (v) => setB({ amt: v }) }),
+        slider({ label: 'Duração', min: 4, max: 18, step: 1, value: 22 - (b.decay || 9), fmt: (v) => (v > 14 ? 'longa' : v > 9 ? 'média' : 'curta'), onInput: (v) => setB({ decay: 22 - v }) }),
+        slider({ label: 'A cada', min: 1, max: 8, step: 1, value: b.every || 1, fmt: (v) => v + ' batida' + (v > 1 ? 's' : ''), onInput: (v) => setB({ every: v }) }),
+        h('div', { class: 'btn-row' }, btn('Pra cima', 'zoomin', () => setB({ dir: 1 })), btn('Pra baixo', 'zoomout', () => setB({ dir: -1 })),
+          btn('Ver ▶', 'play', () => { const mk = beatTimes(store, cur().beat); const t0 = Math.max(0, (mk[0] !== undefined ? mk[0] : engine.time) - 0.4); engine.seek(t0); engine.play(); }, 'primary'),
+          btn('Parar', 'pause', () => engine.pause())), hint);
+    } },
+    { id: 'fine', label: '3 · Ajuste fino', build: () => h('div', {},
+      h('p', { class: 'note' }, 'Transforma o efeito em keyframes reais neste clipe, para você editar cada pulo na aba Keyframes (como no Alight Motion).'),
+      h('div', { class: 'btn-row' }, btn('Converter em keyframes', 'diamond', () => { bakeBeat(store, c.id, toast); ctx.openSheet('beat'); }, 'primary'),
+        btn('Remover efeito', 'close', () => { store.mutate((p) => { for (const x of p.clips) if (x.type !== 'audio') x.beat = Object.assign({}, x.beat, { type: 'none' }); }); toast('Efeito removido'); ctx.openSheet('beat'); }))) },
+  ]));
 }
 
 function buildSmart(root, ctx) {

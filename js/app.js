@@ -236,6 +236,10 @@ function renderToolbar() {
     add('music', 'Áudio', () => pick('audio'));
     add('mic', 'Voz', recordVoice);
     add('text', 'Texto', addText);
+    const atHead = () => { const t = engine.time; const c = store.p.clips.filter((x) => (x.type === 'video' || x.type === 'image') && t >= x.start - 1e-6 && t < x.start + x.dur).sort((a, b) => a.lane - b.lane)[0]; if (!c) { toast('Coloque a linha branca sobre um clipe'); return false; } store.select(c.id); return true; };
+    add('filter', 'Filtros', () => { if (atHead()) openSheet('filters'); });
+    add('fx', 'Efeitos', () => { if (atHead()) openSheet('effects'); });
+    add('music', 'Batida', () => { if (atHead()) openSheet('beat'); });
     add('spark', 'Inteligente', () => openSheet('smart'));
     add('smile', 'Adesivos', () => openSheet('stickers'));
     add('captions', 'Legendas', () => openSheet('captions'));

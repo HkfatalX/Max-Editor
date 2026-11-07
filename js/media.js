@@ -82,7 +82,10 @@ export async function importFiles(files, store, onProgress) {
     if (!kind) { errors.push(`${f.name}: tipo de arquivo não reconhecido`); continue; }
     try {
       const meta = await probe(f, kind);
-      const rec = { id: uid(), projectId: store.p.id, name: f.name, kind, type: f.type || '', blob: f, size: f.size, added: Date.now(), ...meta };
+      // Copia o arquivo para a memória: no Android o seletor devolve um "File" que pode ficar inválido (InvalidBlob)
+      let blob = f;
+      if (f.size <= 250 * 1048576) { try { blob = new Blob([await f.arrayBuffer()], { type: f.type || ({ video: 'video/mp4', image: 'image/jpeg', audio: 'audio/mpeg' })[kind] }); } catch { blob = f; } }
+      const rec = { id: uid(), projectId: store.p.id, name: f.name, kind, type: f.type || '', blob, size: f.size, added: Date.now(), ...meta };
       await storage.putMedia(rec);
       rec.url = URL.createObjectURL(rec.blob);
       store.media.set(rec.id, rec);
