@@ -1,4 +1,5 @@
 // Max Editor — timeline: cabeça de reprodução fixa no centro; a trilha rola por baixo
+import { cached, waveSvg } from './analyze.js';
 import { LANES, MIN_DUR, fmtTime } from './config.js';
 import { icon } from './icons.js';
 
@@ -118,6 +119,7 @@ export class Timeline {
     el.style.width = Math.max(10, c.dur * this.pps) + 'px';
     const m = this.store.media.get(c.mediaId);
     if (m && m.thumb && (c.type === 'video' || c.type === 'image')) el.style.backgroundImage = `url(${m.thumb})`;
+    if (c.type === 'audio') { const a = cached(c.mediaId); if (a && a.wave) { const bg = waveSvg(a.wave, c.in, c.in + c.dur * c.speed); if (bg) { el.style.backgroundImage = bg; el.style.backgroundSize = '100% 100%'; el.style.backgroundRepeat = 'no-repeat'; } } }
     let label = '';
     if (c.type === 'text') label = (c.text.str || '').replace(/\n/g, ' ');
     else if (m) label = m.name;

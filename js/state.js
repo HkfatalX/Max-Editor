@@ -90,10 +90,10 @@ export class Store {
   localTime(c) { return clamp(r3(this.timeFn() - c.start), 0, c.dur); }
   tv(c) { return evalKf(c, this.localTime(c)); } // valores no instante atual
 
-  snap() { const p = this.p; return JSON.stringify({ clips: p.clips, ratio: p.ratio, bg: p.bg, bgMode: p.bgMode }); }
+  snap() { const p = this.p; return JSON.stringify({ clips: p.clips, ratio: p.ratio, bg: p.bg, bgMode: p.bgMode, markers: p.markers || [] }); }
   restore(s) {
     const o = JSON.parse(s);
-    this.p.clips = o.clips; this.p.ratio = o.ratio; this.p.bg = o.bg; this.p.bgMode = o.bgMode || 'color';
+    this.p.clips = o.clips; this.p.ratio = o.ratio; this.p.bg = o.bg; this.p.bgMode = o.bgMode || 'color'; this.p.markers = o.markers || [];
     if (this.sel && !this.clip(this.sel)) this.sel = null;
   }
   get canUndo() { return this.undoS.length > 0; }
@@ -129,7 +129,7 @@ export class Store {
     }
     this.lastKey = key || ''; this.lastAt = now;
     this.redoS = [];
-    if (this.sel && !this.clip(this.sel)) this.sel = null;
+    if (this.sel && !this.clip(this.sel)) { this.sel = null; this.emit('select', null); }
     this.emit('change', { structural: true });
     return true;
   }

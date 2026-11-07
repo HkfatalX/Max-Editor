@@ -1,12 +1,11 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "notes": [
-    "Login com e-mail, senha e nome de usuário único",
-    "Abas: Projetos, Modelos e Perfil",
-    "Keyframes, máscaras, mistura, chroma key e efeitos",
-    "Texto com estilos, neon e digitação; adesivos e legendas rápidas",
-    "Permissões reais no app Android",
-    "Novo ícone"
+    "Inteligente: detectar batidas e cortar no ritmo da música",
+    "Remover silêncio automático",
+    "Congelar quadro e salvar quadro como foto",
+    "Forma de onda nos áudios",
+    "Correção: barra de ferramentas ficava errada com projeto vazio"
   ],
   "apkUrl": "https://github.com/HkfatalX/Max-Editor/releases/latest/download/MaxEditor.apk"
 }

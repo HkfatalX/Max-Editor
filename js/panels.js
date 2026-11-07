@@ -1,13 +1,15 @@
 // Max Editor — painéis de edição (folha inferior no celular / painel lateral no PC)
 import { RATIOS } from './config.js';
 import { FILTERS, ANIMS_IN, ANIMS_OUT, TRANSITIONS, FONT_NAMES, LOOPS, BLENDS, MASKS } from './engine.js';
-import { makeClip, defaultText } from './state.js';
+import { makeClip, defaultText, uid } from './state.js';
+import { analyze, beats, silences } from './analyze.js';
+import { MIN_DUR } from './config.js';
 import { h, slider, chips, swatches, btn, section, tabs, toggle, COLORS } from './ui.js';
 
 const pct = (v) => Math.round(v * 100) + '%';
 const fx2 = (v) => v.toFixed(2);
 
-export const SHEET_TITLES = { adjust: 'Ajustes', filters: 'Filtros', effects: 'Efeitos', keyframes: 'Keyframes', speed: 'Velocidade', volume: 'Volume', anim: 'Animações', trans: 'Transição', text: 'Texto', ratio: 'Projeto', stickers: 'Adesivos', captions: 'Legendas rápidas' };
+export const SHEET_TITLES = { adjust: 'Ajustes', filters: 'Filtros', effects: 'Efeitos', keyframes: 'Keyframes', speed: 'Velocidade', volume: 'Volume', anim: 'Animações', trans: 'Transição', text: 'Texto', ratio: 'Projeto', stickers: 'Adesivos', captions: 'Legendas rápidas', smart: 'Inteligente' };
 
 const TEXT_PRESETS = [
   ['Clássico', { color: '#ffffff', stroke: '#000000', strokeW: 0.12, bg: '', font: 'sans', bold: true, italic: false, upper: false, shadow: 0, glow: 0 }],
@@ -25,6 +27,93 @@ const EMOJI = {
   Símbolos: '❤️ 🔥 ✨ ⭐ 💯 💥 🎉 🎶 💎 👑 ⚡ 🌈',
   Coisas: '🎬 📸 🎧 🎤 🚀 🏆 🍕 🎮 📱 💡 🌟 🌸',
 };
+
+
+function sortedMarkers(p) { return (p.markers || []).slice().sort((a, b) => a - b); }
+
+// Corta (remove) trechos [a,b] da linha do tempo de um clipe, sem deixar buracos dentro dele
+function removeRanges(store, id, ranges) {
+  store.mutate((p) => {
+    const c = p.clips.find((x) => x.id === id); if (!c) return;
+    const end = c.start + c.dur, keeps = []; let pos = c.start;
+    for (const [a, b] of ranges) { if (a > pos + MIN_DUR) keeps.push([pos, a]); pos = Math.max(pos, b); }
+    if (end > pos + MIN_DUR) keeps.push([pos, end]);
+    let run = c.start;
+    const out = keeps.map(([a, b], i) => {
+      const n = JSON.parse(JSON.stringify(c));
+      n.id = uid(); n.start = run; n.dur = b - a; n.in = c.in + (a - c.start) * c.speed; run += n.dur;
+      if (i > 0) { n.animIn = 'none'; n.trans = 'none'; n.fadeIn = 0; }
+      if (i < keeps.length - 1) { n.animOut = 'none'; n.fadeOut = 0; }
+      return n;
+    });
+    p.clips = p.clips.filter((x) => x.id !== id).concat(out);
+  });
+}
+
+function buildSmart(root, ctx) {
+  const { store, engine, toast } = ctx;
+  const c = store.selected();
+  const hasAudio = c && (c.type === 'video' || c.type === 'audio');
+  let step = 1, sens = 0.05;
+  const mediaOf = (cl) => store.media.get(cl.mediaId);
+
+  if (hasAudio) {
+    const status = h('p', { class: 'note' }, 'Analisa o áudio do clipe selecionado no seu aparelho. Nada é enviado.');
+    root.append(section('Batidas (sincronizar com a música)',
+      h('div', { class: 'btn-row' },
+        btn('Detectar batidas', 'spark', async () => {
+          const cl = store.clip(c.id), m = mediaOf(cl);
+          status.textContent = 'Analisando áudio…';
+          const a = await analyze(m);
+          if (!a) { status.textContent = 'Não consegui ler o áudio deste arquivo.'; return; }
+          const src = beats(a.env).filter((t) => t >= cl.in && t <= cl.in + cl.dur * cl.speed).map((t) => +(cl.start + (t - cl.in) / cl.speed).toFixed(3));
+          store.mutate((p) => { p.markers = src; });
+          status.textContent = src.length ? `${src.length} batida(s) marcada(s) em amarelo na timeline.` : 'Nenhuma batida clara encontrada. Tente uma música com ritmo mais marcado.';
+        }, 'primary'),
+        btn('Marcador aqui', 'diamond', () => { store.mutate((p) => { p.markers = (p.markers || []).concat([+engine.time.toFixed(3)]); }); toast('Marcador adicionado'); }),
+        btn('Limpar', 'close', () => store.mutate((p) => { p.markers = []; }))),
+      slider({ label: 'A cada', min: 1, max: 8, step: 1, value: step, fmt: (v) => v + ' batida' + (v > 1 ? 's' : ''), onInput: (v) => { step = v; } }),
+      h('div', { class: 'btn-row' }, btn('Cortar clipes nas batidas', 'split', () => {
+        const mk = sortedMarkers(store.p);
+        if (mk.length < 2) { toast('Detecte as batidas primeiro'); return; }
+        const cuts = [0].concat(mk);
+        store.mutate((p) => {
+          const main = p.clips.filter((x) => x.lane === 0).sort((a, b) => a.start - b.start);
+          main.forEach((cl, i) => {
+            const a = cuts[i * step], b = cuts[(i + 1) * step];
+            if (a === undefined || b === undefined) return;
+            let d = b - a; const m = mediaOf(cl);
+            if (cl.type === 'video' && m && m.dur) d = Math.min(d, (m.dur - cl.in) / cl.speed);
+            cl.dur = Math.max(MIN_DUR, d);
+          });
+        });
+        toast('Clipes ajustados ao ritmo ✓');
+      }, 'primary')),
+      status));
+
+    root.append(section('Remover silêncio (cortes automáticos)',
+      slider({ label: 'Sensib.', min: 0.02, max: 0.15, step: 0.005, value: sens, fmt: (v) => (v <= 0.04 ? 'baixa' : v <= 0.08 ? 'média' : 'alta'), onInput: (v) => { sens = v; } }),
+      h('div', { class: 'btn-row' }, btn('Remover silêncios', 'trash', async () => {
+        const cl = store.clip(c.id), m = mediaOf(cl);
+        if (cl.kf && cl.kf.length) { toast('Remova os keyframes deste clipe antes'); return; }
+        toast('Analisando…', 20000);
+        const a = await analyze(m);
+        if (!a) { toast('Não consegui ler o áudio deste arquivo'); return; }
+        const ranges = silences(a.env, sens).map(([x, y]) => [cl.start + (Math.max(x, cl.in) - cl.in) / cl.speed, cl.start + (Math.min(y, cl.in + cl.dur * cl.speed) - cl.in) / cl.speed]).filter(([x, y]) => y - x >= 0.3);
+        if (!ranges.length) { toast('Nenhum silêncio encontrado'); return; }
+        const gain = ranges.reduce((t, [x, y]) => t + (y - x), 0);
+        removeRanges(store, cl.id, ranges); store.select(null);
+        toast(`${ranges.length} corte(s): −${gain.toFixed(1)}s (dá pra desfazer)`);
+      })),
+      h('p', { class: 'note' }, 'Ótimo para vídeos de fala: tira as pausas. Se cortar demais, desfaça e diminua a sensibilidade.')));
+  }
+
+  const q = [];
+  if (c && c.type === 'video') q.push(btn('Congelar quadro', 'image', () => ctx.freeze()));
+  q.push(btn('Salvar quadro como foto', 'download', () => ctx.saveFrame()));
+  root.append(section('Quadro', h('div', { class: 'btn-row' }, ...q), h('p', { class: 'note' }, 'Congelar cria uma foto do quadro atual (2s) no meio do vídeo. Atalhos no PC: F congela, M marca.')));
+  if (!hasAudio) root.append(h('p', { class: 'note' }, 'Selecione um vídeo ou áudio na timeline para usar Batidas e Remover silêncio.'));
+}
 
 export function buildPanel(kind, ctx) {
   const { store, engine } = ctx;
@@ -237,6 +326,8 @@ export function buildPanel(kind, ctx) {
       }, 'primary')),
       h('p', { class: 'note' }, 'Depois toque em cada legenda na timeline para ajustar texto, tempo e estilo.')));
   }
+
+  else if (kind === 'smart') buildSmart(root, ctx);
 
   else root.append(h('p', { class: 'note' }, 'Selecione um clipe para editar.'));
   return root;

@@ -10,6 +10,7 @@ import { importFiles, loadProjectMedia, freeMedia, clipFromMedia, textClip } fro
 import { exportVideo, exportSize, pickMime, extFor } from './export.js';
 import { saveVideo, safeName } from './files.js';
 import { checkUpdate, applyUpdate, runningVersion } from './updater.js';
+import { analyze } from './analyze.js';
 import { Auth, validEmail } from './auth.js';
 import { TEMPLATES } from './templates.js';
 import { permStatus, requestPerms, allGranted, neededAliases, PERM_INFO, openSettings, notify } from './permissions.js';
@@ -111,6 +112,7 @@ async function openProject(id, opts = {}) {
   session.setOpen(id);
   editorBack = pushBack((fromBack) => closeEditor(fromBack));
   refreshUi(); renderToolbar();
+  for (const m of media.values()) if (m.kind === 'audio') analyze(m).then(() => { if (tl && store.p) tl.render(); });
   if (recovered) { markDirty(); toast('Projeto recuperado do último salvamento automático'); }
   else if (opts.auto) toast('Reabrimos o projeto em que você estava');
   if (lost) toast(`${lost} clipe(s) removido(s): mídia não encontrada`, 4000);
@@ -232,6 +234,7 @@ function renderToolbar() {
     add('music', 'Áudio', () => pick('audio'));
     add('mic', 'Voz', recordVoice);
     add('text', 'Texto', addText);
+    add('spark', 'Inteligente', () => openSheet('smart'));
     add('smile', 'Adesivos', () => openSheet('stickers'));
     add('captions', 'Legendas', () => openSheet('captions'));
     add('ratio', 'Projeto', () => openSheet('ratio'));
@@ -239,6 +242,7 @@ function renderToolbar() {
   }
   add('close', 'Fechar', () => store.select(null), 'back');
   add('split', 'Dividir', splitSelected);
+  if (c.type === 'video' || c.type === 'audio') add('spark', 'Inteligente', () => openSheet('smart'));
   if (c.type === 'text') add('edit', 'Texto', () => openSheet('text'));
   if (c.type === 'video' || c.type === 'audio') add('volume', 'Volume', () => openSheet('volume'));
   if (c.type === 'video' || c.type === 'audio') add('speed', 'Velocidade', () => openSheet('speed'));
@@ -264,7 +268,7 @@ function addText() {
 // ----- painéis (folha inferior / lateral no PC) -----
 function openSheet(kind, silent) {
   sheetKind = kind;
-  const panel = buildPanel(kind, { store, engine, toast, closeSheet: () => closeSheet(), openSheet: (k) => openSheet(k, true) });
+  const panel = buildPanel(kind, { store, engine, toast, freeze: freezeFrame, saveFrame, closeSheet: () => closeSheet(), openSheet: (k) => openSheet(k, true) });
   $('#sheetBody').replaceChildren(panel);
   $('#sheetTitle').textContent = SHEET_TITLES[kind] || '';
   $('#sheet').hidden = false; $('#editor').classList.add('sheet-open');
@@ -311,11 +315,41 @@ async function addFiles(files, target, at) {
         if (lane === 0) tMain += c.dur; else tHead += c.dur;
       }
     });
+    for (const m of media) if (m.kind === 'audio') analyze(m).then(() => { if (tl && store.p) tl.render(); });
     if (store.duration() > 0 && media.length) tl.fit();
     toast(`${media.length} arquivo${media.length > 1 ? 's' : ''} adicionado${media.length > 1 ? 's' : ''}`);
   } else $('#toast').classList.remove('show');
   if (errors.length) modal({ title: 'Alguns arquivos não foram adicionados', body: `<ul>${errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul>`, actions: [{ label: 'Ok', cls: 'primary' }] });
   void last;
+}
+
+// ======================= quadro: congelar / salvar foto =======================
+async function freezeFrame() {
+  const c = store.selected();
+  if (!c || c.type !== 'video') { toast('Selecione um vídeo na timeline'); return; }
+  const m = store.media.get(c.mediaId), t = engine.time;
+  if (t - c.start < 0.15 || c.start + c.dur - t < 0.15) { toast('Coloque a linha branca no meio do clipe'); return; }
+  engine.pause(); toast('Congelando quadro…', 20000);
+  try {
+    const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = m.url;
+    await new Promise((res, rej) => { v.onloadeddata = res; v.onerror = () => rej(new Error('vídeo')); });
+    await new Promise((res) => { v.onseeked = res; v.currentTime = c.in + (t - c.start) * c.speed; });
+    const cn = document.createElement('canvas'); cn.width = v.videoWidth; cn.height = v.videoHeight; cn.getContext('2d').drawImage(v, 0, 0);
+    v.removeAttribute('src'); v.load();
+    const blob = await new Promise((r) => cn.toBlob(r, 'image/jpeg', 0.92));
+    const { media } = await importFiles([new File([blob], 'Quadro congelado.jpg', { type: 'image/jpeg' })], store);
+    if (!media.length) throw new Error('importar');
+    if (!store.split(c.id, t)) throw new Error('dividir');
+    store.mutate((p) => { const im = clipFromMedia(media[0], c.lane, t - 0.001); Object.assign(im, { dur: 2, fit: c.fit, x: c.x, y: c.y, scale: c.scale, rot: c.rot, flip: c.flip, filter: c.filter }); p.clips.push(im); });
+    toast('Quadro congelado por 2s ✓');
+  } catch (e) { console.error(e); toast('Não consegui congelar este quadro'); }
+}
+async function saveFrame() {
+  if (!store.p) return;
+  engine.pause();
+  const blob = await new Promise((r) => cv.toBlob(r, 'image/png'));
+  if (!blob) { toast('Não consegui gerar a foto'); return; }
+  try { const r = await saveVideo(blob, `${safeName(store.p.name)}-quadro.png`); toast('Foto salva em: ' + r.where, 4000); } catch (e) { toast('Não consegui salvar a foto'); }
 }
 
 // ======================= gravação de voz =======================
@@ -446,6 +480,8 @@ window.addEventListener('keydown', (e) => {
   else if (mod && k === 'y') { e.preventDefault(); store.redo(); }
   else if (mod && k === 'd') { e.preventDefault(); const c = store.selected(); if (c) store.duplicate(c.id); }
   else if (k === 's' && !mod) { splitSelected(); }
+  else if (k === 'm' && !mod) { store.mutate((p) => { p.markers = (p.markers || []).concat([+engine.time.toFixed(3)]); }); toast('Marcador adicionado'); }
+  else if (k === 'f' && !mod) { freezeFrame(); }
   else if (k === 'delete' || k === 'backspace') { const c = store.selected(); if (c) { e.preventDefault(); store.removeClip(c.id); } }
   else if (k === 'escape') store.select(null);
   else if (k === 'arrowleft' || k === 'arrowright') { e.preventDefault(); engine.pause(); engine.seek(engine.time + (k === 'arrowleft' ? -1 : 1) * (e.shiftKey ? 1 : 1 / 30)); }

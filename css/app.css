@@ -244,3 +244,6 @@ textarea.field { resize: vertical; min-height: 70px; }
 #permSettings { margin-top: 8px; width: 100%; }
 .sw-row { padding: 4px 0; }
 @media (min-width: 900px) { .tabbar { max-width: 520px; left: 50%; right: auto; transform: translateX(-50%); bottom: 14px; border: 1px solid var(--line); border-radius: 22px; } }
+
+.mk { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: rgba(255,225,77,.75); pointer-events: none; z-index: 3; }
+.clip.t-audio { background-color: #7a3fb0; }
