@@ -123,7 +123,7 @@ export class Timeline {
     else if (m) label = m.name;
     if (c.speed !== 1) label = `${c.speed}x · ${label}`;
     el.innerHTML = `<span class="cl">${label.replace(/</g, '&lt;')}</span>` +
-      (c.trans !== 'none' ? '<i class="tr" title="Transição"></i>' : '') +
+      (c.trans !== 'none' ? '<i class="tr" title="Transição"></i>' : '') + (c.kf && c.kf.length ? c.kf.map((k) => '<i class="kf" style="left:' + (k.t * this.pps) + 'px"></i>').join('') : '') +
       (selected ? '<i class="h l"></i><i class="h r"></i>' : '');
     return el;
   }

@@ -18,8 +18,41 @@
 <body>
 <div id="app">
 
+  <!-- ===== LOGIN ===== -->
+  <section id="auth" class="screen" hidden>
+    <div class="auth-card">
+      <img class="logo" src="assets/icons/icon-192.png" alt="Max Editor" width="84" height="84">
+      <h1>Max Editor</h1>
+      <p class="muted">Entre para guardar seus projetos na sua conta.</p>
+      <div class="tabs" id="authTabs"><button class="tab on" data-m="in" type="button">Entrar</button><button class="tab" data-m="up" type="button">Criar conta</button></div>
+      <form id="authForm" novalidate>
+        <label class="fld"><span data-ic="mail"></span><input id="fEmail" type="email" inputmode="email" autocomplete="email" placeholder="E-mail (Gmail)" maxlength="120"></label>
+        <label class="fld" id="fUserWrap" hidden><span data-ic="user"></span><input id="fUser" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Nome de usuário (único)" maxlength="20"></label>
+        <div class="hint" id="fUserHint"></div>
+        <label class="fld"><span data-ic="lock"></span><input id="fPass" type="password" autocomplete="current-password" placeholder="Senha" maxlength="72"><button type="button" class="eye" id="togglePass" aria-label="Mostrar senha" data-ic="eye"></button></label>
+        <div class="auth-msg" id="authMsg" role="alert"></div>
+        <button class="cta" id="authGo" type="submit">Entrar</button>
+        <button class="linkbtn" id="authForgot" type="button">Esqueci minha senha</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ===== PERMISSÕES (só no app Android) ===== -->
+  <section id="perms" class="screen" hidden>
+    <div class="auth-card">
+      <div class="perm-ic" data-ic="shield"></div>
+      <h1>Permissões</h1>
+      <p class="muted">O Max Editor precisa destas permissões para funcionar bem. Você pode mudar depois nas configurações do Android.</p>
+      <div id="permList" class="perm-list"></div>
+      <div class="auth-msg" id="permMsg"></div>
+      <button class="cta" id="permAllow" type="button">Permitir</button>
+      <button class="btn" id="permSettings" type="button" hidden>Abrir configurações do Android</button>
+      <button class="linkbtn" id="permSkip" type="button">Agora não</button>
+    </div>
+  </section>
+
   <!-- ===== TELA INICIAL ===== -->
-  <section id="home" class="screen">
+  <section id="home" class="screen" hidden>
     <div class="home-hero">
       <div class="hero-top">
         <span class="ver-chip" id="verLabel">v—</span>
@@ -34,12 +67,26 @@
       </div>
     </div>
     <main class="home-main">
-      <button class="cta" id="btnNew"><span data-ic="plus"></span>Novo projeto</button>
-      <button class="btn install" id="btnInstall" hidden><span data-ic="download"></span><span>Instalar o app</span></button>
-      <div class="sec-head"><h2>Meus projetos</h2><span id="projCount" class="muted"></span></div>
-      <div id="projList" class="proj-grid"></div>
-      <p id="projEmpty" class="muted empty" hidden>Nenhum projeto ainda. Toque em “Novo projeto” para começar.</p>
+      <div id="tabProjects">
+        <button class="cta" id="btnNew"><span data-ic="plus"></span>Novo projeto</button>
+        <div class="sec-head"><h2>Meus projetos</h2><span id="projCount" class="muted"></span></div>
+        <div id="projList" class="proj-grid"></div>
+        <p id="projEmpty" class="muted empty" hidden>Nenhum projeto ainda. Toque em “Novo projeto” ou escolha um modelo.</p>
+      </div>
+      <div id="tabTemplates" hidden>
+        <div class="sec-head"><h2>Modelos prontos</h2></div>
+        <div id="tplList" class="tpl-grid"></div>
+      </div>
+      <div id="tabProfile" hidden>
+        <div class="sec-head"><h2>Perfil</h2></div>
+        <div id="profileBox"></div>
+      </div>
     </main>
+    <nav class="tabbar" id="homeTabs" aria-label="Seções">
+      <button class="htab on" data-t="projects" type="button"><span data-ic="home"></span><b>Projetos</b></button>
+      <button class="htab" data-t="templates" type="button"><span data-ic="spark"></span><b>Modelos</b></button>
+      <button class="htab" data-t="profile" type="button"><span data-ic="user"></span><b>Perfil</b></button>
+    </nav>
   </section>
 
   <!-- ===== EDITOR ===== -->

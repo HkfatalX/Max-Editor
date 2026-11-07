@@ -1,7 +1,7 @@
 // Max Editor — aplicação principal (telas, projetos, autosave, importação, exportação, atualização)
 import { APP_NAME, RATIOS, PREVIEW_LONG, isNative, parseRatio, fmtTime, IMAGE_DUR } from './config.js';
 import { storage, mirrorProject, readMirror, session, prefs } from './storage.js';
-import { Store, newProject } from './state.js';
+import { Store, newProject, uid } from './state.js';
 import { Engine, FILTERS } from './engine.js';
 import { Timeline } from './timeline.js';
 import { icon } from './icons.js';
@@ -10,6 +10,10 @@ import { importFiles, loadProjectMedia, freeMedia, clipFromMedia, textClip } fro
 import { exportVideo, exportSize, pickMime, extFor } from './export.js';
 import { saveVideo, safeName } from './files.js';
 import { checkUpdate, applyUpdate, runningVersion } from './updater.js';
+import { Auth, validEmail } from './auth.js';
+import { TEMPLATES } from './templates.js';
+import { permStatus, requestPerms, allGranted, neededAliases, PERM_INFO, openSettings, notify } from './permissions.js';
+import { USERNAME_RE } from './config.js';
 import { $, $$, h, esc, toast, modal, confirmBox, promptBox, chips, btn, pushBack, removeBack } from './ui.js';
 
 const store = new Store();
@@ -26,7 +30,8 @@ const projDuration = (p) => p.clips.reduce((m, c) => Math.max(m, c.start + c.dur
 // ======================= tela inicial =======================
 async function renderHome() {
   let list = [];
-  try { list = await storage.listProjects(); } catch (e) { console.error(e); toast('Não consegui ler os projetos salvos'); }
+  const me = ownerId();
+  try { list = (await storage.listProjects()).filter((p) => !p.owner || p.owner === me); } catch (e) { console.error(e); toast('Não consegui ler os projetos salvos'); }
   const grid = $('#projList'); grid.innerHTML = '';
   $('#projEmpty').hidden = list.length > 0;
   $('#projCount').textContent = list.length ? `${list.length} projeto${list.length > 1 ? 's' : ''}` : '';
@@ -39,11 +44,16 @@ async function renderHome() {
     card.append(open, more); grid.append(card);
   }
 }
-function showHome() { $('#editor').hidden = true; $('#home').hidden = false; renderHome(); }
+function showHome() { $('#editor').hidden = true; $('#auth').hidden = true; $('#perms').hidden = true; $('#home').hidden = false; setHomeTab(homeTab); renderHome(); }
 
 function projectMenu(p) {
   const m = modal({ title: p.name, actions: [
     { label: 'Fechar' },
+    { label: 'Duplicar', onClick: async () => { const rec = await storage.loadProject(p.id); const c = JSON.parse(JSON.stringify(rec)); c.id = uid(); c.name = rec.name + ' (cópia)'; c.created = c.updated = Date.now(); c.owner = ownerId();
+        const ids = new Set(c.clips.map((x) => x.mediaId).filter(Boolean)); const map = {};
+        try { for (const id of ids) { const m = await storage.getMedia(id); if (m) { const nid = uid(); map[id] = nid; await storage.putMedia(Object.assign({}, m, { id: nid, projectId: c.id })); } } } catch (e) { toast('Sem espaço para duplicar'); return; }
+        c.clips.forEach((x) => { if (x.mediaId && map[x.mediaId]) x.mediaId = map[x.mediaId]; }); c.clips.forEach((x) => { x.id = uid(); });
+        await storage.saveProject(c); renderHome(); toast('Projeto duplicado'); } },
     { label: 'Renomear', onClick: async () => { const n = await promptBox('Renomear projeto', p.name); if (n) { const rec = await storage.loadProject(p.id); rec.name = n; await storage.saveProject(rec); renderHome(); } } },
     { label: 'Excluir', cls: 'danger', onClick: async () => { if (await confirmBox(`Excluir “${p.name}”? Isso apaga as mídias dele também.`, 'Excluir', true)) { await storage.deleteProject(p.id); if (session.getOpen() === p.id) session.clearOpen(); renderHome(); toast('Projeto excluído'); } } },
   ] });
@@ -69,7 +79,7 @@ function newProjectDialog() {
     { label: 'Cancelar' },
     { label: 'Criar projeto', cls: 'primary', onClick: async () => {
       prefs.set('lastRatio', ratio);
-      const p = newProject(name.value.trim() || 'Projeto', ratio);
+      const p = newProject(name.value.trim() || 'Projeto', ratio, ownerId());
       try { await storage.saveProject(p); } catch (e) { toast('Não consegui criar o projeto (sem espaço?)'); return false; }
       setTimeout(() => openProject(p.id), 50);
     } },
@@ -188,7 +198,7 @@ store.on('change', (e) => {
 store.on('select', (id) => {
   const c = id && store.clip(id);
   if (c && (engine.time < c.start - 1e-3 || engine.time >= c.start + c.dur)) engine.seek(c.start + Math.min(0.05, c.dur / 2));
-  if (sheetKind && sheetKind !== 'ratio') closeSheet();
+  if (sheetKind && sheetKind !== 'ratio' && sheetKind !== 'stickers' && sheetKind !== 'captions') closeSheet();
   renderToolbar(); engine.requestRender();
 });
 engine.on('state', () => { $('#btnPlay').innerHTML = icon(engine.playing ? 'pause' : 'play'); $('#btnPlay').setAttribute('aria-label', engine.playing ? 'Pausar' : 'Reproduzir'); });
@@ -222,7 +232,9 @@ function renderToolbar() {
     add('music', 'Áudio', () => pick('audio'));
     add('mic', 'Voz', recordVoice);
     add('text', 'Texto', addText);
-    add('ratio', 'Proporção', () => openSheet('ratio'));
+    add('smile', 'Adesivos', () => openSheet('stickers'));
+    add('captions', 'Legendas', () => openSheet('captions'));
+    add('ratio', 'Projeto', () => openSheet('ratio'));
     return;
   }
   add('close', 'Fechar', () => store.select(null), 'back');
@@ -233,6 +245,8 @@ function renderToolbar() {
   if (c.type === 'video' || c.type === 'image') add('filter', 'Filtros', () => openSheet('filters'));
   if (c.type !== 'audio') add('adjust', 'Ajustes', () => openSheet('adjust'));
   if (c.type !== 'audio') add('anim', 'Animação', () => openSheet('anim'));
+  if (c.type !== 'audio') add('fx', 'Efeitos', () => openSheet('effects'));
+  if (c.type !== 'audio') add('diamond', 'Keyframes', () => openSheet('keyframes'));
   if (c.lane === 0) add('trans', 'Transição', () => openSheet('trans'));
   add('copy', 'Duplicar', () => store.duplicate(c.id));
   add('trash', 'Excluir', () => { store.removeClip(c.id); toast('Clipe excluído (dá pra desfazer)'); }, 'danger');
@@ -250,7 +264,7 @@ function addText() {
 // ----- painéis (folha inferior / lateral no PC) -----
 function openSheet(kind, silent) {
   sheetKind = kind;
-  const panel = buildPanel(kind, { store, engine, openSheet: (k) => openSheet(k, true) });
+  const panel = buildPanel(kind, { store, engine, toast, closeSheet: () => closeSheet(), openSheet: (k) => openSheet(k, true) });
   $('#sheetBody').replaceChildren(panel);
   $('#sheetTitle').textContent = SHEET_TITLES[kind] || '';
   $('#sheet').hidden = false; $('#editor').classList.add('sheet-open');
@@ -366,6 +380,7 @@ async function runExport(shortSide, fps) {
   try {
     toast('Salvando arquivo…', 60000);
     const r = await saveVideo(out.blob, name);
+    if (document.hidden) notify('Max Editor', 'Seu vídeo está pronto!');
     modal({ title: 'Vídeo pronto! 🎬', body: `<p><b>${esc(name)}</b> (${(out.blob.size / 1048576).toFixed(1)} MB)</p><p class="note">Salvo em: ${esc(r.where)}.</p>`, actions: [{ label: 'Ok', cls: 'primary' }] });
   } catch (e) { console.error(e); modal({ title: 'Não consegui salvar o arquivo', body: `<p>${esc(e.message || e)}</p>`, actions: [{ label: 'Ok', cls: 'primary' }] }); }
   $('#toast').classList.remove('show');
@@ -481,23 +496,8 @@ $('#btnSettings').addEventListener('click', async () => {
 
 // ======================= instalação PWA e permissões =======================
 let installEvt = null;
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (!isNative()) $('#btnInstall').hidden = false; });
-$('#btnInstall').addEventListener('click', async () => { if (!installEvt) return; installEvt.prompt(); try { await installEvt.userChoice; } catch {} installEvt = null; $('#btnInstall').hidden = true; });
-window.addEventListener('appinstalled', () => { $('#btnInstall').hidden = true; });
-
-function firstRun() {
-  if (prefs.get('onboarded', false)) return;
-  modal({ title: 'Bem-vindo ao Max Editor 👋', dismissible: false, body: `
-    <p>Para funcionar direitinho, o app usa:</p>
-    <ul>
-      <li><b>Armazenamento protegido</b> — guarda seus projetos e mídias para o sistema não apagar sozinho.</li>
-      <li><b>Arquivos</b> — você escolhe quais vídeos/fotos/áudios importar pelo seletor do sistema (não lemos nada além disso).</li>
-      <li><b>Microfone</b> — só é pedido quando você tocar em “Voz” para gravar narração.</li>
-    </ul>`, actions: [
-    { label: 'Agora não', onClick: () => { prefs.set('onboarded', true); } },
-    { label: 'Permitir armazenamento', cls: 'primary', onClick: async () => { prefs.set('onboarded', true); try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch {} } },
-  ] });
-}
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; });
+window.addEventListener('appinstalled', () => { installEvt = null; });
 
 // ======================= início =======================
 $('#btnNew').addEventListener('click', newProjectDialog);
@@ -505,13 +505,174 @@ if ('serviceWorker' in navigator && !isNative() && location.protocol.startsWith(
 runningVersion().then((v) => { $('#verLabel').textContent = 'v' + v; });
 window.__maxEditor = { store, engine }; // útil para testes e depuração
 
+
+// ======================= login / abas / permissões =======================
+let homeTab = 'projects', authMode = 'in', lastUid = null;
+function ownerId() { const u = Auth.user(); return u ? u.id : null; }
+
+function setHomeTab(n) {
+  homeTab = n;
+  $('#tabProjects').hidden = n !== 'projects'; $('#tabTemplates').hidden = n !== 'templates'; $('#tabProfile').hidden = n !== 'profile';
+  $('.home-hero').hidden = n !== 'projects';
+  $$('#homeTabs .htab').forEach((b) => b.classList.toggle('on', b.dataset.t === n));
+  if (n === 'templates') renderTemplates();
+  if (n === 'profile') renderProfile();
+  $('#home').scrollTop = 0;
+}
+$$('#homeTabs .htab').forEach((b) => b.addEventListener('click', () => setHomeTab(b.dataset.t)));
+
+function pickFiles(accept) {
+  return new Promise((res) => { const i = document.createElement('input'); i.type = 'file'; i.multiple = true; i.accept = accept; i.onchange = () => res(Array.from(i.files || [])); i.oncancel = () => res([]); i.click(); });
+}
+function renderTemplates() {
+  const g = $('#tplList'); g.innerHTML = '';
+  for (const t of TEMPLATES) {
+    const b = h('button', { class: 'tpl', type: 'button', style: `--g:${t.grad}` }, h('div', { class: 'tpl-art' }, h('span', {}, t.emoji), h('i', {}, t.ratio)), h('div', { class: 'tpl-meta' }, h('b', {}, t.name), h('small', {}, t.desc)));
+    b.addEventListener('click', () => useTemplate(t));
+    g.append(b);
+  }
+}
+async function useTemplate(t) {
+  let files = [];
+  if (t.media) { files = await pickFiles('video/*,image/*'); if (!files.length) return; }
+  const p = newProject(t.name, t.ratio, ownerId());
+  try { await storage.saveProject(p); } catch { toast('Não consegui criar o projeto (sem espaço?)'); return; }
+  await openProject(p.id);
+  if (!store.p) return;
+  toast('Montando o modelo…', 60000);
+  let media = [], errors = [];
+  if (files.length) ({ media, errors } = await importFiles(files, store));
+  if (t.media && !media.length) { toast('Nenhuma mídia válida'); return; }
+  t.apply(store, media);
+  if (store.duration() > 0) tl.fit();
+  engine.seek(0); toast('Modelo pronto! Personalize como quiser.');
+  if (errors.length) toast(errors[0], 4000);
+}
+
+function renderProfile() {
+  const u = Auth.user(); const box = $('#profileBox'); box.innerHTML = '';
+  if (!u) return;
+  const row = (ic, title, sub, fn, cls = '') => { const r = h('button', { class: 'prow ' + cls, type: 'button', html: icon(ic) }, h('div', {}, h('b', {}, title), sub ? h('small', {}, sub) : null)); r.addEventListener('click', fn); return r; };
+  box.append(h('div', { class: 'pcard' }, h('div', { class: 'avatar' }, (u.username || u.email || '?')[0].toUpperCase()), h('div', {}, h('b', {}, u.username ? '@' + u.username : 'Sem nome de usuário'), h('small', {}, u.email))));
+  const list = h('div', { class: 'plist' });
+  if (isNative()) list.append(row('shield', 'Permissões do app', 'Microfone, mídia e notificações', async () => { const st = await permStatus(); if (st && !allGranted(st)) showPerms(true); else toast('Todas as permissões já estão liberadas ✓'); }));
+  list.append(row('gear', 'Configurações', 'Qualidade da prévia, armazenamento, atualização', () => $('#btnSettings').click()));
+  list.append(row('refresh', 'Verificar atualização', `Versão instalada: ${$('#verLabel').textContent}`, () => runUpdateCheck(true)));
+  list.append(row('star', 'Novidades', 'O que tem de novo', showNews));
+  list.append(row('lock', 'Alterar senha', '', async () => {
+    const inp = h('input', { class: 'field', type: 'password', placeholder: 'Nova senha (mín. 6)', maxlength: '72', autocomplete: 'new-password' });
+    modal({ title: 'Alterar senha', body: inp, actions: [{ label: 'Cancelar' }, { label: 'Salvar', cls: 'primary', onClick: async () => { if (inp.value.length < 6) { toast('Mínimo de 6 caracteres'); return false; } try { await Auth.updatePassword(inp.value); toast('Senha alterada ✓'); } catch (e) { toast(e.message); return false; } } }] });
+  }));
+  if (installEvt) list.append(row('download', 'Instalar o app', 'Adicionar à tela inicial', installPwa));
+  list.append(row('logout', 'Sair da conta', 'Seus projetos ficam salvos neste aparelho', async () => { if (await confirmBox('Sair da conta?', 'Sair', true)) Auth.signOut(); }, 'danger'));
+  box.append(list);
+}
+function showNews() {
+  modal({ title: 'Novidades da versão', body: `<ul><li>Conta com e-mail, senha e nome de usuário único</li><li>Abas: Projetos, Modelos e Perfil</li><li>Keyframes, máscaras, mistura, chroma key e efeitos</li><li>Texto com estilos prontos, neon e digitação</li><li>Adesivos, legendas rápidas e fundo desfocado</li><li>Permissões reais no app Android</li></ul>`, actions: [{ label: 'Legal!', cls: 'primary' }] });
+}
+async function installPwa() { if (!installEvt) return; installEvt.prompt(); try { await installEvt.userChoice; } catch {} installEvt = null; }
+
+// ----- tela de login -----
+function setAuthMode(m) {
+  authMode = m;
+  $$('#authTabs .tab').forEach((b) => b.classList.toggle('on', b.dataset.m === m));
+  $('#fUserWrap').hidden = m !== 'up'; $('#fUserHint').textContent = '';
+  $('#authGo').textContent = m === 'up' ? 'Criar conta' : 'Entrar';
+  $('#authForgot').hidden = m === 'up';
+  $('#fPass').autocomplete = m === 'up' ? 'new-password' : 'current-password';
+  authMsg('');
+}
+function authMsg(t, ok) { const e = $('#authMsg'); e.textContent = t; e.className = 'auth-msg' + (ok ? ' ok' : ''); }
+$$('#authTabs .tab').forEach((b) => b.addEventListener('click', () => setAuthMode(b.dataset.m)));
+$('#togglePass').addEventListener('click', () => { const i = $('#fPass'); i.type = i.type === 'password' ? 'text' : 'password'; });
+let hintTimer = 0;
+$('#fUser').addEventListener('input', () => {
+  const v = $('#fUser').value.trim(), el = $('#fUserHint'); clearTimeout(hintTimer);
+  if (!v) { el.textContent = ''; return; }
+  if (!USERNAME_RE.test(v)) { el.textContent = '3–20 caracteres: letras, números, _ e .'; el.className = 'hint bad'; return; }
+  el.textContent = 'Verificando…'; el.className = 'hint';
+  hintTimer = setTimeout(async () => { try { const ok = await Auth.usernameAvailable(v); if ($('#fUser').value.trim() === v) { el.textContent = ok ? '✓ Nome disponível' : 'Já está em uso'; el.className = 'hint ' + (ok ? 'good' : 'bad'); } } catch { el.textContent = ''; } }, 450);
+});
+$('#authForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = $('#fEmail').value.trim(), pass = $('#fPass').value, user = $('#fUser').value.trim();
+  if (!validEmail(email)) return authMsg('Digite um e-mail válido.');
+  if (authMode === 'up') {
+    if (!USERNAME_RE.test(user)) return authMsg('Nome de usuário: 3 a 20 caracteres (letras, números, _ ou .).');
+    if (pass.length < 6) return authMsg('A senha precisa ter pelo menos 6 caracteres.');
+  } else if (!pass) return authMsg('Digite sua senha.');
+  const go = $('#authGo'); go.disabled = true; authMsg('Aguarde…', true);
+  try {
+    if (authMode === 'up') {
+      let free = true; try { free = await Auth.usernameAvailable(user); } catch { /* o servidor também garante */ }
+      if (!free) { authMsg('Esse nome de usuário já está em uso. Escolha outro.'); return; }
+      const r = await Auth.signUp({ email, password: pass, username: user });
+      if (!r.signedIn) { setAuthMode('in'); authMsg('Conta criada! Enviamos um e-mail: abra o link de confirmação e depois entre aqui.', true); }
+    } else await Auth.signIn({ email, password: pass });
+  } catch (err) { authMsg(err.message || 'Não foi possível continuar.'); }
+  finally { go.disabled = false; }
+});
+$('#authForgot').addEventListener('click', async () => {
+  const email = $('#fEmail').value.trim();
+  if (!validEmail(email)) return authMsg('Digite seu e-mail acima e toque de novo.');
+  try { await Auth.recover(email); authMsg('Se o e-mail existir, enviamos o link para criar uma nova senha.', true); } catch (e) { authMsg(e.message); }
+});
+
+// ----- tela de permissões (só no APK) -----
+async function showPerms(manual) {
+  const st = await permStatus();
+  if (!st || allGranted(st)) { if (!manual) showHome(); return; }
+  const list = $('#permList'); list.innerHTML = '';
+  for (const k of neededAliases(st)) {
+    const i = PERM_INFO[k], ok = st[k] === 'granted';
+    list.append(h('div', { class: 'perm' + (ok ? ' ok' : '') }, h('span', { class: 'pi', html: icon(i.icon) }), h('div', {}, h('b', {}, i.title), h('small', {}, i.why)), h('em', {}, ok ? '✓' : '')));
+  }
+  $('#permMsg').textContent = ''; $('#permSettings').hidden = true;
+  $('#home').hidden = true; $('#auth').hidden = true; $('#perms').hidden = false;
+}
+$('#permAllow').addEventListener('click', async () => {
+  const st = await requestPerms();
+  if (!st || allGranted(st)) { toast('Permissões liberadas ✓'); showHome(); return; }
+  const denied = neededAliases(st).filter((k) => st[k] !== 'granted');
+  $('#permMsg').textContent = 'Algumas permissões não foram liberadas: ' + denied.map((k) => PERM_INFO[k].title).join(', ') + '. Se o Android não perguntar de novo, abra as configurações e permita manualmente.';
+  $('#permSettings').hidden = false;
+  showPermsList(st);
+});
+function showPermsList(st) {
+  const list = $('#permList'); list.innerHTML = '';
+  for (const k of neededAliases(st)) { const i = PERM_INFO[k], ok = st[k] === 'granted'; list.append(h('div', { class: 'perm' + (ok ? ' ok' : '') }, h('span', { class: 'pi', html: icon(i.icon) }), h('div', {}, h('b', {}, i.title), h('small', {}, i.why)), h('em', {}, ok ? '✓' : ''))); }
+}
+$('#permSettings').addEventListener('click', () => openSettings());
+$('#permSkip').addEventListener('click', () => { prefs.set('permSkipped', true); showHome(); });
+document.addEventListener('visibilitychange', async () => { if (!document.hidden && !$('#perms').hidden) { const st = await permStatus(); if (st) { showPermsList(st); if (allGranted(st)) showHome(); } } });
+
+// ----- entrada / saída da conta -----
+async function enterApp() {
+  if (store.p) return;
+  if (isNative() && !prefs.get('permSkipped', false)) { const st = await permStatus(); if (st && !allGranted(st)) { showPerms(); return; } }
+  showHome();
+}
+async function leaveApp() {
+  if (store.p) await closeEditor(false);
+  $('#home').hidden = true; $('#editor').hidden = true; $('#perms').hidden = true; $('#auth').hidden = false; $('#fPass').value = '';
+  setAuthMode('in');
+}
+
 (async function boot() {
+  const hr = await Auth.handleHash();
+  await Auth.init();
+  if (hr && hr.error) setTimeout(() => toast(hr.error, 5000), 300);
+  const u = Auth.user();
+  lastUid = u ? u.id : null;
+  Auth.onChange((nu) => { const id = nu ? nu.id : null; if (id === lastUid) return; lastUid = id; if (id) enterApp(); else leaveApp(); });
+  if (!u) { setAuthMode('in'); $('#auth').hidden = false; return; }
+  if (hr && hr.type === 'recovery') { setTimeout(() => { $('#home').hidden = false; setHomeTab('profile'); toast('Defina uma nova senha em “Alterar senha”', 6000); }, 400); }
+  else if (hr && !hr.error) setTimeout(() => toast('E-mail confirmado ✓'), 400);
   const last = session.getOpen();
   if (last) {
-    try { if (await storage.loadProject(last)) { await openProject(last, { auto: true }); return; } } catch (e) { console.error(e); }
+    try { const rec = await storage.loadProject(last); if (rec && (!rec.owner || rec.owner === u.id)) { await openProject(last, { auto: true }); return; } } catch (e) { console.error(e); }
     session.clearOpen();
   }
-  showHome();
-  setTimeout(firstRun, 700);
+  enterApp();
 })();
 void FILTERS; void IMAGE_DUR;

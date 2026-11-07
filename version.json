@@ -1,5 +1,12 @@
 {
-  "version": "1.0.0",
-  "notes": ["Primeira versão do Max Editor"],
+  "version": "1.1.0",
+  "notes": [
+    "Login com e-mail, senha e nome de usuário único",
+    "Abas: Projetos, Modelos e Perfil",
+    "Keyframes, máscaras, mistura, chroma key e efeitos",
+    "Texto com estilos, neon e digitação; adesivos e legendas rápidas",
+    "Permissões reais no app Android",
+    "Novo ícone"
+  ],
   "apkUrl": "https://github.com/HkfatalX/Max-Editor/releases/latest/download/MaxEditor.apk"
 }

@@ -150,3 +150,20 @@ export function btn(label, ic, onClick, cls = '') {
 export function section(title, ...kids) { return h('div', { class: 'sec' }, title ? h('div', { class: 'sec-t' }, title) : null, ...kids); }
 
 export const COLORS = ['#ffffff', '#000000', '#ff3b5c', '#ff9f1c', '#ffe14d', '#3ddc84', '#2ec4ff', '#5b8cff', '#b14dff', '#ff6ec7'];
+
+// ---------- abas dentro dos painéis ----------
+const lastTab = {};
+export function tabs(key, defs) {
+  const wrap = h('div', { class: 'tabs-wrap' }), bar = h('div', { class: 'tabs' }), body = h('div', { class: 'tab-body' });
+  const show = (d) => { lastTab[key] = d.id; [...bar.children].forEach((b) => b.classList.toggle('on', b.dataset.id === d.id)); body.replaceChildren(d.build()); };
+  for (const d of defs) { const b = h('button', { class: 'tab', type: 'button', 'data-id': d.id }, d.label); b.addEventListener('click', () => show(d)); bar.append(b); }
+  wrap.append(bar, body);
+  show(defs.find((d) => d.id === lastTab[key]) || defs[0]);
+  return wrap;
+}
+
+export function toggle(label, value, onChange) {
+  const b = h('button', { class: 'switch' + (value ? ' on' : ''), type: 'button', role: 'switch', 'aria-checked': String(!!value) }, h('span', { class: 'knob' }));
+  b.addEventListener('click', () => { value = !value; b.classList.toggle('on', value); b.setAttribute('aria-checked', String(value)); onChange(value); });
+  return h('div', { class: 'row sw-row' }, h('span', {}, label), b);
+}

@@ -5,6 +5,11 @@ export const SITE_URL = 'https://hkfatalx.github.io/Max-Editor/';
 export const REMOTE_VERSION_URL = SITE_URL + 'version.json';
 export const APK_URL = `https://github.com/${REPO}/releases/latest/download/MaxEditor.apk`;
 
+// Supabase (projeto "max-editor"). A chave "anon" é pública por design; a segurança vem das regras (RLS) no banco.
+export const SUPABASE_URL = 'https://kzjdhyqkywlsivxlsufl.supabase.co';
+export const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt6amRoeXFreXdsc2l2eGxzdWZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5MzU0MzMsImV4cCI6MjEwOTUxMTQzM30.ezRDwbg87mNtkXXk_ppJOXpyao3wrJTPPsRkN_5RXko';
+export const USERNAME_RE = /^[A-Za-z0-9_.]{3,20}$/;
+
 export const RATIOS = [
   { id: '9:16', w: 9, h: 16, hint: 'TikTok · Reels · Shorts' },
   { id: '16:9', w: 16, h: 9, hint: 'YouTube · TV' },
@@ -15,7 +20,7 @@ export const RATIOS = [
   { id: '21:9', w: 21, h: 9, hint: 'Cinema' },
 ];
 
-// 0 = trilha principal (magnética), 1 = sobreposição, 2 = texto, 3 = áudio
+// 0 = trilha principal (magnética), 1 = sobreposição, 2 = texto/adesivos, 3 = áudio
 export const LANES = [
   { id: 0, name: 'Vídeo', icon: 'video' },
   { id: 1, name: 'Sobrepor', icon: 'layers' },

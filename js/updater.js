@@ -1,5 +1,6 @@
 // Max Editor — aviso de versão nova (site/PWA e APK)
 import { REMOTE_VERSION_URL, APK_URL, isNative } from './config.js';
+import { plugin } from './permissions.js';
 
 let running = null;
 
@@ -42,7 +43,7 @@ export async function checkUpdate() {
 
 export async function applyUpdate(info) {
   if (isNative()) {
-    const B = window.Capacitor.Plugins && window.Capacitor.Plugins.Browser;
+    const B = plugin('Browser');
     if (B && B.open) { await B.open({ url: info.apkUrl }); return; }
     window.open(info.apkUrl, '_system'); return;
   }

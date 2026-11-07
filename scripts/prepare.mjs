@@ -36,6 +36,11 @@ if (mode === 'web') {
     '<uses-permission android:name="android.permission.RECORD_AUDIO" />',
     '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />',
     '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />',
+    '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />',
+    '<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />',
+    '<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />',
+    '<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />',
+    '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
     '<uses-feature android:name="android.hardware.microphone" android:required="false" />',
   ];
   for (const p of perms) {
@@ -44,9 +49,119 @@ if (mode === 'web') {
   }
   fs.writeFileSync(mf, x);
 
-  // --- ícones (foto do usuário) ---
+
+  // --- plugin nativo de permissões (pede de verdade, com tela do Android) ---
+  const javaDir = path.join(app, 'src', 'main', 'java', 'com', 'maxeditor', 'app');
+  fs.mkdirSync(javaDir, { recursive: true });
+  fs.writeFileSync(path.join(javaDir, 'MaxPermissionsPlugin.java'), `package com.maxeditor.app;
+
+import android.Manifest;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
+import android.provider.Settings;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+
+@CapacitorPlugin(
+  name = "MaxPermissions",
+  permissions = {
+    @Permission(alias = "mic", strings = { Manifest.permission.RECORD_AUDIO }),
+    @Permission(alias = "storage", strings = { Manifest.permission.READ_EXTERNAL_STORAGE }),
+    @Permission(alias = "media", strings = { Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO }),
+    @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS })
+  }
+)
+public class MaxPermissionsPlugin extends Plugin {
+
+  private JSObject status() {
+    JSObject o = new JSObject();
+    o.put("sdk", Build.VERSION.SDK_INT);
+    o.put("mic", getPermissionState("mic").toString());
+    if (Build.VERSION.SDK_INT >= 33) {
+      o.put("media", getPermissionState("media").toString());
+      o.put("notifications", getPermissionState("notifications").toString());
+    } else {
+      o.put("storage", getPermissionState("storage").toString());
+    }
+    return o;
+  }
+
+  @PluginMethod
+  public void check(PluginCall call) {
+    call.resolve(status());
+  }
+
+  @PluginMethod
+  public void request(PluginCall call) {
+    String[] aliases = Build.VERSION.SDK_INT >= 33
+      ? new String[] { "mic", "media", "notifications" }
+      : new String[] { "mic", "storage" };
+    requestPermissionForAliases(aliases, call, "permsDone");
+  }
+
+  @PermissionCallback
+  private void permsDone(PluginCall call) {
+    call.resolve(status());
+  }
+
+  @PluginMethod
+  public void openSettings(PluginCall call) {
+    Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+    i.setData(Uri.fromParts("package", getContext().getPackageName(), null));
+    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    getContext().startActivity(i);
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void notify(PluginCall call) {
+    try {
+      Context c = getContext();
+      if (Build.VERSION.SDK_INT >= 26) {
+        NotificationChannel ch = new NotificationChannel("maxeditor", "Max Editor", NotificationManager.IMPORTANCE_DEFAULT);
+        ((NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(ch);
+      }
+      NotificationCompat.Builder b = new NotificationCompat.Builder(c, "maxeditor")
+        .setSmallIcon(c.getApplicationInfo().icon)
+        .setContentTitle(call.getString("title", "Max Editor"))
+        .setContentText(call.getString("body", ""))
+        .setAutoCancel(true);
+      NotificationManagerCompat.from(c).notify(1001, b.build());
+    } catch (Exception e) {
+      // sem permissão de notificação: ignora
+    }
+    call.resolve();
+  }
+}
+`);
+  fs.writeFileSync(path.join(javaDir, 'MainActivity.java'), `package com.maxeditor.app;
+
+import android.os.Bundle;
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+  @Override
+  public void onCreate(Bundle savedInstanceState) {
+    registerPlugin(MaxPermissionsPlugin.class);
+    super.onCreate(savedInstanceState);
+  }
+}
+`);
+
+  // --- ícones ---
   const iconsSrc = path.join(root, 'assets', 'android-icons');
-  for (const d of fs.readdirSync(iconsSrc)) copyDir(path.join(iconsSrc, d), path.join(res, d));
+  for (const d of fs.readdirSync(iconsSrc)) if (fs.statSync(path.join(iconsSrc, d)).isDirectory()) copyDir(path.join(iconsSrc, d), path.join(res, d));
   const any = path.join(res, 'mipmap-anydpi-v26');
   fs.rmSync(any, { recursive: true, force: true });
   fs.mkdirSync(any, { recursive: true });
@@ -54,7 +169,7 @@ if (mode === 'web') {
   fs.writeFileSync(path.join(any, 'ic_launcher.xml'), adaptive);
   fs.writeFileSync(path.join(any, 'ic_launcher_round.xml'), adaptive);
   fs.mkdirSync(path.join(res, 'values'), { recursive: true });
-  fs.writeFileSync(path.join(res, 'values', 'max_colors.xml'), '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n  <color name="max_icon_bg">#03060F</color>\n</resources>\n');
+  fs.writeFileSync(path.join(res, 'values', 'max_colors.xml'), '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n  <color name="max_icon_bg">' + (fs.existsSync(path.join(iconsSrc, 'bgcolor.txt')) ? fs.readFileSync(path.join(iconsSrc, 'bgcolor.txt'), 'utf8').trim() : '#17122E') + '</color>\n</resources>\n');
 
   // --- nome e versão ---
   const sf = path.join(res, 'values', 'strings.xml');

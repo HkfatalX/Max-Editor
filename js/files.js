@@ -1,5 +1,6 @@
 // Max Editor — salvar arquivo exportado (navegador/PC e APK Android)
 import { isNative } from './config.js';
+import { plugin } from './permissions.js';
 
 function toBase64(buf) {
   const bytes = new Uint8Array(buf);
@@ -20,8 +21,7 @@ export async function saveVideo(blob, filename, onProgress) {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     return { where: 'pasta Downloads do navegador' };
   }
-  const P = window.Capacitor.Plugins || {};
-  const FS = P.Filesystem, Share = P.Share;
+  const FS = plugin('Filesystem'), Share = plugin('Share');
   if (!FS) throw new Error('Plugin de arquivos indisponível');
   try { if (FS.requestPermissions) await FS.requestPermissions(); } catch { /* Android 11+ não precisa */ }
   const CH = 3 * 1024 * 1024; // múltiplo de 3 → base64 concatenável
