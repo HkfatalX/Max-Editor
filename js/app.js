@@ -186,6 +186,7 @@ function updateTime() { $('#timeLabel').textContent = `${fmtTime(engine.time)} /
 
 tl = new Timeline($('#timeline'), store, engine);
 tl.onTime = updateTime;
+tl.onAddMain = () => pick('main');
 
 store.on('change', (e) => {
   if (!store.p) return;

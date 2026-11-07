@@ -1,11 +1,10 @@
 {
-  "version": "1.2.0",
+  "version": "1.2.1",
   "notes": [
-    "Inteligente: detectar batidas e cortar no ritmo da música",
-    "Remover silêncio automático",
-    "Congelar quadro e salvar quadro como foto",
-    "Forma de onda nos áudios",
-    "Correção: barra de ferramentas ficava errada com projeto vazio"
+    "Corrigido: tocar num clipe da timeline agora seleciona",
+    "Botão + no fim da trilha principal para adicionar mídia",
+    "Marcadores de batida aparecem na timeline",
+    "Alvos de toque maiores no celular"
   ],
   "apkUrl": "https://github.com/HkfatalX/Max-Editor/releases/latest/download/MaxEditor.apk"
 }

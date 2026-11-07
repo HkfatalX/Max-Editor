@@ -247,3 +247,6 @@ textarea.field { resize: vertical; min-height: 70px; }
 
 .mk { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: rgba(255,225,77,.75); pointer-events: none; z-index: 3; }
 .clip.t-audio { background-color: #7a3fb0; }
+
+.add-end { position: absolute; top: 3px; width: 34px; height: 34px; border-radius: 10px; border: 0; background: #fff; color: #111; font-size: 24px; font-weight: 700; line-height: 1; display: grid; place-items: center; z-index: 6; touch-action: manipulation; }
+@media (pointer: coarse) { .clip { min-width: 18px; } .lane { min-height: 44px; } .clip { height: 38px; } }

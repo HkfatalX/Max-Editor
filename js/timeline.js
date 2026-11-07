@@ -108,6 +108,10 @@ export class Timeline {
       lane.innerHTML = '';
       for (const c of this.store.p.clips.filter((x) => x.lane === n)) lane.appendChild(this.clipEl(c, c.id === sel));
     }
+    const l0 = this.lanes.find((l) => +l.dataset.lane === 0);
+    if (l0) { const b = document.createElement('button'); b.className = 'add-end'; b.type = 'button'; b.textContent = '+'; b.setAttribute('aria-label', 'Adicionar mídia'); b.style.left = (this.x(this.store.duration()) + 10) + 'px'; l0.appendChild(b); }
+    this.inner.querySelectorAll('.mk').forEach((e) => e.remove());
+    for (const t of this.store.p.markers || []) { const i = document.createElement('i'); i.className = 'mk'; i.style.left = this.x(t) + 'px'; this.inner.appendChild(i); }
     this.syncScroll(true);
   }
 
@@ -148,7 +152,7 @@ export class Timeline {
     const isHandle = e.target.classList.contains('h');
     const wasSel = this.store.sel === id;
     if (!wasSel && (e.pointerType === 'mouse' || e.pointerType === 'pen')) this.store.select(id);
-    else if (!wasSel) { this._tapId = id; return; } // toque: seleciona no "click" (permite rolar)
+    else if (!wasSel) { this._tap = { id, x: e.clientX, y: e.clientY, t: performance.now(), sl: this.scroll.scrollLeft, pid: e.pointerId }; return; } // toque: seleciona ao soltar (permite rolar)
     const mode = isHandle ? (e.target.classList.contains('l') ? 'trimL' : 'trimR') : 'move';
     this.drag = { id, mode, x0: e.clientX, orig: JSON.parse(JSON.stringify(c)), moved: false, pid: e.pointerId, el: null };
     if (mode !== 'move' || e.pointerType === 'mouse') e.preventDefault();
@@ -206,6 +210,11 @@ export class Timeline {
 
   onUp(e, cancelled) {
     this.pointers.delete(e.pointerId);
+    const tp = this._tap;
+    if (tp && tp.pid === e.pointerId) {
+      this._tap = null;
+      if (Math.hypot(e.clientX - tp.x, e.clientY - tp.y) < 14 && performance.now() - tp.t < 700 && Math.abs(this.scroll.scrollLeft - tp.sl) < 12 && this.store.clip(tp.id)) { this.store.select(tp.id); return; }
+    }
     if (this.pinch && this.pointers.size < 2) { this.pinch = null; this.drawRuler(); }
     const d = this.drag;
     if (d && e.pointerId === d.pid) {
@@ -240,6 +249,7 @@ export class Timeline {
   bindClick() {
     this.scroll.addEventListener('click', (e) => {
       if (this._swallowClick) { this._swallowClick = false; return; }
+      if (e.target.closest('.add-end')) { if (this.onAddMain) this.onAddMain(); return; }
       const clipEl = e.target.closest('.clip');
       if (clipEl && !e.target.classList.contains('h')) this.store.select(clipEl.dataset.id);
     });
