@@ -1,5 +1,5 @@
 // Max Editor — service worker: funciona offline; aviso de update é feito pelo app (version.json)
-const CACHE = 'maxeditor-shell-v3';
+const CACHE = 'maxeditor-shell-v4';
 const SHELL = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest',
   'js/app.js', 'js/config.js', 'js/storage.js', 'js/state.js', 'js/engine.js', 'js/media.js', 'js/files.js',

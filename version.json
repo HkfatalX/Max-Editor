@@ -1,10 +1,12 @@
 {
-  "version": "1.2.1",
+  "version": "1.3.0",
   "notes": [
-    "Corrigido: tocar num clipe da timeline agora seleciona",
-    "Botão + no fim da trilha principal para adicionar mídia",
-    "Marcadores de batida aparecem na timeline",
-    "Alvos de toque maiores no celular"
+    "HeadBop e efeitos na batida (zoom, tremor, giro, balanço) com Auto HeadBop em 1 toque",
+    "Miniaturas ao longo do vídeo na timeline",
+    "Botão de transição entre clipes (como no CapCut)",
+    "Silenciar / Ativar áudio rápido",
+    "8 filtros e 3 transições novos",
+    "Correção: tocar no clipe, no + e na transição agora funciona sempre"
   ],
   "apkUrl": "https://github.com/HkfatalX/Max-Editor/releases/latest/download/MaxEditor.apk"
 }

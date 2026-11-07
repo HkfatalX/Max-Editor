@@ -30,11 +30,20 @@ export const FILTERS = [
   { id: 'drama', name: 'Drama', css: 'contrast(1.35) saturate(.8) brightness(.92)', sw: '#6b6bff' },
   { id: 'moody', name: 'Sombrio', css: 'contrast(1.25) saturate(.7) brightness(.85) hue-rotate(-8deg)', sw: '#3a3f6b' },
   { id: 'cine', name: 'Cinema', css: 'contrast(1.15) saturate(.9) hue-rotate(-6deg) brightness(.96)', sw: '#2fb5a6' },
+  { id: 'moody', name: 'Sombrio', css: 'contrast(1.25) brightness(.85) saturate(.9)', sw: '#3a3f5c' },
+  { id: 'pastel', name: 'Pastel', css: 'brightness(1.12) saturate(.7) contrast(.9)', sw: '#f3c6e0' },
+  { id: 'drama', name: 'Drama', css: 'contrast(1.4) saturate(1.2) brightness(.9)', sw: '#8a2b3a' },
+  { id: 'tealor', name: 'Teal & Laranja', css: 'sepia(.2) saturate(1.5) hue-rotate(155deg) contrast(1.1)', sw: '#1aa6a6' },
+  { id: 'lofi', name: 'Lo-fi', css: 'sepia(.3) contrast(1.1) saturate(.8) brightness(.95)', sw: '#a58b6b' },
+  { id: 'hdr', name: 'HDR', css: 'contrast(1.3) saturate(1.4)', sw: '#ffb300' },
+  { id: 'matte', name: 'Fosco suave', css: 'contrast(.8) brightness(1.1) saturate(.9)', sw: '#cfd6e4' },
+  { id: 'invert', name: 'Negativo', css: 'invert(1)', sw: '#222' },
 ];
 export const ANIMS_IN = [['none', 'Nenhuma'], ['fade', 'Aparecer'], ['zoom', 'Zoom'], ['pop', 'Pop'], ['slam', 'Impacto'], ['spin', 'Girar'], ['drop', 'Cair'], ['left', 'Da esquerda'], ['right', 'Da direita'], ['up', 'Subir']];
 export const ANIMS_OUT = [['none', 'Nenhuma'], ['fade', 'Sumir'], ['zoom', 'Zoom'], ['spin', 'Girar'], ['left', 'Para esquerda'], ['right', 'Para direita'], ['down', 'Descer']];
+export const BEATS = [['none', 'Nenhum'], ['bop', 'HeadBop'], ['zoom', 'Zoom na batida'], ['shake', 'Tremor'], ['spin', 'Giro'], ['wobble', 'Balanço']];
 export const LOOPS = [['none', 'Nenhuma'], ['zoomin', 'Zoom lento +'], ['zoomout', 'Zoom lento −'], ['pulse', 'Pulsar'], ['float', 'Flutuar'], ['sway', 'Balançar'], ['spin', 'Girar']];
-export const TRANSITIONS = [['none', 'Corte seco'], ['fade', 'Escurecer'], ['white', 'Flash'], ['slideL', 'Deslizar ←'], ['slideR', 'Deslizar →'], ['slideU', 'Subir'], ['zoom', 'Zoom'], ['spin', 'Girar'], ['wipe', 'Revelar']];
+export const TRANSITIONS = [['none', 'Corte seco'], ['fade', 'Escurecer'], ['white', 'Flash'], ['slideL', 'Deslizar ←'], ['slideR', 'Deslizar →'], ['slideU', 'Subir'], ['slideD', 'Descer'], ['zoomOut', 'Zoom −'], ['swing', 'Balanço'], ['zoom', 'Zoom'], ['spin', 'Girar'], ['wipe', 'Revelar']];
 export const BLENDS = [['normal', 'Normal'], ['multiply', 'Multiplicar'], ['screen', 'Tela'], ['overlay', 'Sobrepor'], ['lighten', 'Clarear'], ['darken', 'Escurecer'], ['color-dodge', 'Subexpor'], ['difference', 'Diferença'], ['hard-light', 'Luz forte'], ['soft-light', 'Luz suave']];
 export const MASKS = [['none', 'Nenhuma'], ['circle', 'Círculo'], ['oval', 'Oval'], ['rounded', 'Arredondado'], ['heart', 'Coração'], ['star', 'Estrela'], ['diamond', 'Losango'], ['triangle', 'Triângulo'], ['hex', 'Hexágono']];
 
@@ -69,6 +78,9 @@ function applyTrans(kind, s, isIn, r) {
     case 'slideL': r.dx += isIn ? s : -s; break;
     case 'slideR': r.dx += isIn ? -s : s; break;
     case 'slideU': r.dy += isIn ? s : -s; break;
+    case 'slideD': r.dy += isIn ? -s : s; break;
+    case 'zoomOut': r.s *= isIn ? 1 + 0.6 * s : 1 - 0.5 * s; r.a *= 1 - s * 0.9; break;
+    case 'swing': r.rot += (isIn ? 1 : -1) * 40 * s; r.dx += (isIn ? 1 : -1) * 0.5 * s; r.a *= 1 - s * 0.8; break;
     case 'zoom': r.s *= isIn ? 1 - 0.5 * s : 1 + 0.6 * s; r.a *= 1 - s * 0.9; break;
     case 'spin': r.rot += (isIn ? -1 : 1) * 120 * s; r.s *= 1 - 0.5 * s; r.a *= 1 - s; break;
     case 'wipe': if (isIn) r.wipe = 1 - s; break;
@@ -424,6 +436,27 @@ export class Engine {
     if (fx) {
       if (fx.shake > 0) { r.dx += Math.sin(t * 53) * 0.012 * fx.shake; r.dy += Math.cos(t * 61) * 0.012 * fx.shake; r.rot += Math.sin(t * 47) * 1.5 * fx.shake; }
       if (fx.pulse > 0) r.s *= 1 + 0.07 * fx.pulse * Math.sin(t * 9);
+    }
+    const bt = c.beat;
+    if (bt && bt.type !== 'none' && bt.amt > 0) {
+      let dt = -1, n = 0;
+      if (bt.bpm > 0) { const per = 60 / bt.bpm; dt = ((t % per) + per) % per; n = Math.floor(t / per); }
+      else {
+        const mk = this.store.p.markers || [];
+        let lo = 0, hi = mk.length - 1, f = -1;
+        while (lo <= hi) { const mid = (lo + hi) >> 1; if (mk[mid] <= t) { f = mid; lo = mid + 1; } else hi = mid - 1; }
+        if (f >= 0) { dt = t - mk[f]; n = f; }
+      }
+      if (dt >= 0) {
+        const e = Math.exp(-dt * 9) * bt.amt, sg = n % 2 ? -1 : 1;
+        switch (bt.type) {
+          case 'bop': r.dy -= 0.035 * e; r.s *= 1 + 0.07 * e; break;
+          case 'zoom': r.s *= 1 + 0.18 * e; break;
+          case 'shake': r.dx += Math.sin(t * 90) * 0.02 * e; r.dy += Math.cos(t * 77) * 0.02 * e; break;
+          case 'spin': r.rot += sg * 10 * e; r.s *= 1 + 0.05 * e; break;
+          case 'wobble': r.rot += sg * 5 * e; r.s *= 1 + 0.04 * e; break;
+        }
+      }
     }
     const idx = this.mainIdx.get(c.id);
     if (idx !== undefined) {

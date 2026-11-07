@@ -250,3 +250,7 @@ textarea.field { resize: vertical; min-height: 70px; }
 
 .add-end { position: absolute; top: 3px; width: 34px; height: 34px; border-radius: 10px; border: 0; background: #fff; color: #111; font-size: 24px; font-weight: 700; line-height: 1; display: grid; place-items: center; z-index: 6; touch-action: manipulation; }
 @media (pointer: coarse) { .clip { min-width: 18px; } .lane { min-height: 44px; } .clip { height: 38px; } }
+
+.trbtn { position: absolute; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; border: 0; background: rgba(255,255,255,.92); color: #222; display: grid; place-items: center; z-index: 7; padding: 0; touch-action: manipulation; }
+.trbtn.on { background: #8f6bff; color: #fff; }
+@media (pointer: coarse) { .trbtn { width: 28px; height: 28px; margin: -14px 0 0 -14px; } }

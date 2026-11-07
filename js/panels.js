@@ -1,6 +1,6 @@
 // Max Editor — painéis de edição (folha inferior no celular / painel lateral no PC)
 import { RATIOS } from './config.js';
-import { FILTERS, ANIMS_IN, ANIMS_OUT, TRANSITIONS, FONT_NAMES, LOOPS, BLENDS, MASKS } from './engine.js';
+import { FILTERS, ANIMS_IN, ANIMS_OUT, TRANSITIONS, BEATS, FONT_NAMES, LOOPS, BLENDS, MASKS } from './engine.js';
 import { makeClip, defaultText, uid } from './state.js';
 import { analyze, beats, silences } from './analyze.js';
 import { MIN_DUR } from './config.js';
@@ -9,7 +9,7 @@ import { h, slider, chips, swatches, btn, section, tabs, toggle, COLORS } from '
 const pct = (v) => Math.round(v * 100) + '%';
 const fx2 = (v) => v.toFixed(2);
 
-export const SHEET_TITLES = { adjust: 'Ajustes', filters: 'Filtros', effects: 'Efeitos', keyframes: 'Keyframes', speed: 'Velocidade', volume: 'Volume', anim: 'Animações', trans: 'Transição', text: 'Texto', ratio: 'Projeto', stickers: 'Adesivos', captions: 'Legendas rápidas', smart: 'Inteligente' };
+export const SHEET_TITLES = { adjust: 'Ajustes', filters: 'Filtros', effects: 'Efeitos', keyframes: 'Keyframes', speed: 'Velocidade', volume: 'Volume', anim: 'Animações', trans: 'Transição', text: 'Texto', ratio: 'Projeto', stickers: 'Adesivos', captions: 'Legendas rápidas', smart: 'Inteligente', beat: 'Batida' };
 
 const TEXT_PRESETS = [
   ['Clássico', { color: '#ffffff', stroke: '#000000', strokeW: 0.12, bg: '', font: 'sans', bold: true, italic: false, upper: false, shadow: 0, glow: 0 }],
@@ -48,6 +48,49 @@ function removeRanges(store, id, ranges) {
     });
     p.clips = p.clips.filter((x) => x.id !== id).concat(out);
   });
+}
+
+// acha uma fonte de áudio (selecionado, trilha de áudio ou 1º vídeo), detecta batidas e grava como marcadores
+async function detectMarkers(store) {
+  const sel = store.selected();
+  const ok = (x) => x && (x.type === 'audio' || x.type === 'video');
+  const src = ok(sel) ? sel : (store.p.clips.find((x) => x.type === 'audio') || store.p.clips.filter((x) => x.type === 'video').sort((a, b) => a.start - b.start)[0]);
+  if (!src) return -1;
+  const a = await analyze(store.media.get(src.mediaId));
+  if (!a) return -2;
+  const mk = beats(a.env).filter((t) => t >= src.in && t <= src.in + src.dur * src.speed).map((t) => +(src.start + (t - src.in) / src.speed).toFixed(3));
+  store.mutate((p) => { p.markers = mk; });
+  return mk.length;
+}
+const BEAT_MSG = { '-1': 'Adicione uma música ou vídeo com áudio primeiro.', '-2': 'Não consegui ler o áudio deste arquivo.', 0: 'Nenhuma batida clara encontrada. Use o BPM manual.' };
+
+function buildBeat(root, ctx) {
+  const { store, toast } = ctx;
+  const c = store.selected();
+  const cur = () => store.clip(c.id) || c;
+  const setB = (patch) => store.update(c.id, { beat: patch }, 'beat');
+  const info = h('p', { class: 'note' });
+  const refresh = () => { const n = (store.p.markers || []).length; info.textContent = cur().beat.bpm > 0 ? `Usando BPM manual: ${cur().beat.bpm}.` : n ? `${n} batida(s) detectada(s) — marcadas em amarelo.` : 'Ainda sem batidas. Toque em “Detectar batidas” ou use o BPM manual.'; };
+  refresh();
+  const apply = (type, all) => {
+    store.mutate((p) => { for (const x of p.clips) if ((all ? x.type !== 'audio' : x.id === c.id)) x.beat = Object.assign({}, x.beat, { type }); });
+  };
+  root.append(
+    section('Auto HeadBop (1 toque)', h('div', { class: 'btn-row' }, btn('HeadBop em todos os clipes', 'spark', async () => {
+      toast('Analisando música…', 15000);
+      const n = await detectMarkers(store);
+      if (n <= 0 && !(cur().beat.bpm > 0)) { toast(BEAT_MSG[n] || BEAT_MSG[0], 4500); return; }
+      apply('bop', true); toast('HeadBop aplicado ✓'); ctx.openSheet('beat');
+    }, 'primary')), h('p', { class: 'note' }, 'Detecta o ritmo da música e faz o vídeo “pular” em cada batida.')),
+    section('Efeito na batida', chips(BEATS, cur().beat.type, (id) => apply(id, false)),
+      slider({ label: 'Força', min: 0.2, max: 2, step: 0.05, value: cur().beat.amt, fmt: (v) => Math.round(v * 100) + '%', onInput: (v) => setB({ amt: v }) }),
+      h('div', { class: 'btn-row' }, btn('Aplicar em todos', 'layers', () => { store.mutate((p) => { for (const x of p.clips) if (x.type !== 'audio') x.beat = Object.assign({}, x.beat, { type: cur().beat.type, amt: cur().beat.amt, bpm: cur().beat.bpm }); }); toast('Aplicado em todos os clipes'); }))),
+    section('De onde vêm as batidas',
+      h('div', { class: 'btn-row' }, btn('Detectar batidas', 'music', async () => { const n = await detectMarkers(store); if (n > 0) setB({ bpm: 0 }); toast(n > 0 ? `${n} batidas marcadas` : (BEAT_MSG[n] || BEAT_MSG[0]), 4000); refresh(); }),
+        btn('Marcador aqui', 'diamond', () => { store.mutate((p) => { p.markers = (p.markers || []).concat([+ctx.engine.time.toFixed(3)]).sort((a, b) => a - b); }); refresh(); }),
+        btn('Limpar', 'close', () => { store.mutate((p) => { p.markers = []; }); refresh(); })),
+      slider({ label: 'BPM manual', min: 0, max: 200, step: 1, value: cur().beat.bpm, fmt: (v) => (v ? v + ' BPM' : 'auto'), onInput: (v) => { setB({ bpm: v }); refresh(); } }),
+      info));
 }
 
 function buildSmart(root, ctx) {
@@ -121,7 +164,7 @@ export function buildPanel(kind, ctx) {
   const cur = () => (c ? store.clip(c.id) || c : null);
   const set = (patch, key) => store.update(c.id, patch, key);
   const root = h('div', { class: 'panel' });
-  const needsClip = ['adjust', 'filters', 'effects', 'keyframes', 'speed', 'volume', 'anim', 'trans', 'text'];
+  const needsClip = ['beat', 'adjust', 'filters', 'effects', 'keyframes', 'speed', 'volume', 'anim', 'trans', 'text'];
 
   if (needsClip.includes(kind) && !c) { root.append(h('p', { class: 'note' }, 'Selecione um clipe para editar.')); return root; }
 
@@ -328,6 +371,7 @@ export function buildPanel(kind, ctx) {
   }
 
   else if (kind === 'smart') buildSmart(root, ctx);
+  else if (kind === 'beat') buildBeat(root, ctx);
 
   else root.append(h('p', { class: 'note' }, 'Selecione um clipe para editar.'));
   return root;

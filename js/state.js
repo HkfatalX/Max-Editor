@@ -16,7 +16,7 @@ export function makeClip(over) {
     start: 0, dur: 1, in: 0, speed: 1, vol: 1, opacity: 1,
     x: 0, y: 0, scale: 1, rot: 0, flip: false, fit: 'contain',
     filter: 'none', adj: { b: 0, c: 0, s: 0, h: 0 },
-    animIn: 'none', animOut: 'none', animDur: 0.5, loop: 'none',
+    animIn: 'none', animOut: 'none', animDur: 0.5, loop: 'none', beat: { type: 'none', amt: 1, bpm: 0 },
     trans: 'none', transDur: 0.6, fadeIn: 0, fadeOut: 0,
     blend: 'normal', mask: 'none', radius: 0.15,
     chroma: { on: false, color: '#00ff00', tol: 0.35, soft: 0.12 },
@@ -59,7 +59,7 @@ export function evalKf(c, lt) {
 }
 
 const XF = new Set(['x', 'y', 'scale', 'rot', 'opacity']);
-const NESTED = new Set(['adj', 'text', 'fx', 'chroma']);
+const NESTED = new Set(['adj', 'text', 'fx', 'chroma', 'beat']);
 
 export class Store {
   constructor() {

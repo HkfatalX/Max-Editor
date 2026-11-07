@@ -27,6 +27,7 @@ export class Timeline {
     window.addEventListener('pointermove', (e) => this.onMove(e), { passive: false });
     window.addEventListener('pointerup', (e) => this.onUp(e));
     window.addEventListener('pointercancel', (e) => this.onUp(e, true));
+    this.bindClick();
     this.scroll.addEventListener('wheel', (e) => {
       if (e.ctrlKey) { e.preventDefault(); this.zoom(e.deltaY < 0 ? 1.15 : 1 / 1.15); }
       else if (Math.abs(e.deltaX) < Math.abs(e.deltaY)) { e.preventDefault(); this.scroll.scrollLeft += e.deltaY; }
@@ -109,6 +110,7 @@ export class Timeline {
       for (const c of this.store.p.clips.filter((x) => x.lane === n)) lane.appendChild(this.clipEl(c, c.id === sel));
     }
     const l0 = this.lanes.find((l) => +l.dataset.lane === 0);
+    if (l0) { const mainL = this.store.lane(0); mainL.forEach((c, i) => { if (!i) return; const tb = document.createElement('button'); tb.className = 'trbtn' + (c.trans !== 'none' ? ' on' : ''); tb.type = 'button'; tb.dataset.id = c.id; tb.setAttribute('aria-label', 'Transição'); tb.style.left = this.x(c.start) + 'px'; tb.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M4 6l8 6-8 6zM20 6l-8 6 8 6z" fill="currentColor"/></svg>'; l0.appendChild(tb); }); }
     if (l0) { const b = document.createElement('button'); b.className = 'add-end'; b.type = 'button'; b.textContent = '+'; b.setAttribute('aria-label', 'Adicionar mídia'); b.style.left = (this.x(this.store.duration()) + 10) + 'px'; l0.appendChild(b); }
     this.inner.querySelectorAll('.mk').forEach((e) => e.remove());
     for (const t of this.store.p.markers || []) { const i = document.createElement('i'); i.className = 'mk'; i.style.left = this.x(t) + 'px'; this.inner.appendChild(i); }
@@ -123,6 +125,7 @@ export class Timeline {
     el.style.width = Math.max(10, c.dur * this.pps) + 'px';
     const m = this.store.media.get(c.mediaId);
     if (m && m.thumb && (c.type === 'video' || c.type === 'image')) el.style.backgroundImage = `url(${m.thumb})`;
+    if (c.type === 'video' && m && m.strip && m.dur) { const cw = Math.max(10, c.dur * this.pps), span = c.dur * c.speed; el.style.backgroundImage = `url(${m.strip})`; el.style.backgroundSize = `${cw * m.dur / span}px 100%`; el.style.backgroundPosition = `${-(c.in / span) * cw}px 0`; el.style.backgroundRepeat = 'no-repeat'; }
     if (c.type === 'audio') { const a = cached(c.mediaId); if (a && a.wave) { const bg = waveSvg(a.wave, c.in, c.in + c.dur * c.speed); if (bg) { el.style.backgroundImage = bg; el.style.backgroundSize = '100% 100%'; el.style.backgroundRepeat = 'no-repeat'; } } }
     let label = '';
     if (c.type === 'text') label = (c.text.str || '').replace(/\n/g, ' ');
@@ -142,6 +145,7 @@ export class Timeline {
       this.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), pps: this.pps };
       return;
     }
+    if (e.target.closest('.trbtn') || e.target.closest('.add-end')) return;
     const clipEl = e.target.closest('.clip');
     if (!clipEl) {
       if (e.target.closest('.lane') || e.target === this.inner) this.store.select(null);
@@ -249,6 +253,7 @@ export class Timeline {
   bindClick() {
     this.scroll.addEventListener('click', (e) => {
       if (this._swallowClick) { this._swallowClick = false; return; }
+      const tbn = e.target.closest('.trbtn'); if (tbn) { if (this.onTransition) this.onTransition(tbn.dataset.id); return; }
       if (e.target.closest('.add-end')) { if (this.onAddMain) this.onAddMain(); return; }
       const clipEl = e.target.closest('.clip');
       if (clipEl && !e.target.classList.contains('h')) this.store.select(clipEl.dataset.id);

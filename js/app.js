@@ -112,7 +112,7 @@ async function openProject(id, opts = {}) {
   session.setOpen(id);
   editorBack = pushBack((fromBack) => closeEditor(fromBack));
   refreshUi(); renderToolbar();
-  for (const m of media.values()) if (m.kind === 'audio') analyze(m).then(() => { if (tl && store.p) tl.render(); });
+  for (const m of media.values()) { if (m.kind === 'audio') analyze(m).then(() => { if (tl && store.p) tl.render(); }); queueStrip(m); }
   if (recovered) { markDirty(); toast('Projeto recuperado do último salvamento automático'); }
   else if (opts.auto) toast('Reabrimos o projeto em que você estava');
   if (lost) toast(`${lost} clipe(s) removido(s): mídia não encontrada`, 4000);
@@ -187,6 +187,7 @@ function updateTime() { $('#timeLabel').textContent = `${fmtTime(engine.time)} /
 tl = new Timeline($('#timeline'), store, engine);
 tl.onTime = updateTime;
 tl.onAddMain = () => pick('main');
+tl.onTransition = (id) => { store.select(id); openSheet('trans'); };
 
 store.on('change', (e) => {
   if (!store.p) return;
@@ -250,6 +251,8 @@ function renderToolbar() {
   if (c.type === 'video' || c.type === 'image') add('filter', 'Filtros', () => openSheet('filters'));
   if (c.type !== 'audio') add('adjust', 'Ajustes', () => openSheet('adjust'));
   if (c.type !== 'audio') add('anim', 'Animação', () => openSheet('anim'));
+  if (c.type !== 'audio') add('music', 'Batida', () => openSheet('beat'));
+  if (c.type === 'video' || c.type === 'audio') add('volume', c.vol === 0 ? 'Ativar áudio' : 'Silenciar', () => { store.update(c.id, { vol: c.vol === 0 ? 1 : 0 }); renderToolbar(); });
   if (c.type !== 'audio') add('fx', 'Efeitos', () => openSheet('effects'));
   if (c.type !== 'audio') add('diamond', 'Keyframes', () => openSheet('keyframes'));
   if (c.lane === 0) add('trans', 'Transição', () => openSheet('trans'));
@@ -316,12 +319,31 @@ async function addFiles(files, target, at) {
         if (lane === 0) tMain += c.dur; else tHead += c.dur;
       }
     });
-    for (const m of media) if (m.kind === 'audio') analyze(m).then(() => { if (tl && store.p) tl.render(); });
+    for (const m of media) { if (m.kind === 'audio') analyze(m).then(() => { if (tl && store.p) tl.render(); }); queueStrip(m); }
     if (store.duration() > 0 && media.length) tl.fit();
     toast(`${media.length} arquivo${media.length > 1 ? 's' : ''} adicionado${media.length > 1 ? 's' : ''}`);
   } else $('#toast').classList.remove('show');
   if (errors.length) modal({ title: 'Alguns arquivos não foram adicionados', body: `<ul>${errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul>`, actions: [{ label: 'Ok', cls: 'primary' }] });
   void last;
+}
+
+// ======================= faixa de miniaturas (filmstrip) =======================
+const stripQ = []; let stripBusy = false;
+function queueStrip(m) { if (m.kind !== 'video' || m.strip || m.stripTried) return; m.stripTried = true; stripQ.push(m); if (!stripBusy) runStrip(); }
+async function runStrip() {
+  stripBusy = true;
+  while (stripQ.length) { const m = stripQ.shift(); try { await makeStrip(m); if (tl && store.p) tl.render(); } catch { /* sem miniaturas: segue com a imagem única */ } }
+  stripBusy = false;
+}
+async function makeStrip(m) {
+  const N = Math.min(14, Math.max(4, Math.ceil(m.dur / 2)));
+  const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.playsInline = true; v.src = m.url;
+  await new Promise((res, rej) => { v.onloadeddata = res; v.onerror = rej; });
+  const fh = 48, fw = Math.round(fh * ((v.videoWidth / v.videoHeight) || 1.78));
+  const cn = document.createElement('canvas'); cn.width = fw * N; cn.height = fh; const x = cn.getContext('2d');
+  for (let i = 0; i < N; i++) { await new Promise((res) => { v.onseeked = res; v.currentTime = Math.min(Math.max(0, m.dur - 0.05), (i + 0.5) * m.dur / N); }); x.drawImage(v, i * fw, 0, fw, fh); }
+  v.removeAttribute('src'); v.load();
+  m.strip = cn.toDataURL('image/jpeg', 0.6);
 }
 
 // ======================= quadro: congelar / salvar foto =======================
