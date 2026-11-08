@@ -41,6 +41,7 @@ export const FILTERS = [
 ];
 export const ANIMS_IN = [['none', 'Nenhuma'], ['fade', 'Aparecer'], ['zoom', 'Zoom'], ['pop', 'Pop'], ['slam', 'Impacto'], ['spin', 'Girar'], ['drop', 'Cair'], ['left', 'Da esquerda'], ['right', 'Da direita'], ['up', 'Subir']];
 export const ANIMS_OUT = [['none', 'Nenhuma'], ['fade', 'Sumir'], ['zoom', 'Zoom'], ['spin', 'Girar'], ['left', 'Para esquerda'], ['right', 'Para direita'], ['down', 'Descer']];
+const GRAD_LIST = [['#1a0b3b', '#ff4fd8'], ['#0f2027', '#2c5364'], ['#ff512f', '#dd2476'], ['#4776e6', '#8e54e9'], ['#00c6ff', '#0072ff'], ['#11998e', '#38ef7d'], ['#f7971e', '#ffd200'], ['#232526', '#414345']];
 export const BEATS = [['none', 'Nenhum'], ['bop', 'HeadBop'], ['zoom', 'Zoom na batida'], ['shake', 'Tremor'], ['spin', 'Giro'], ['wobble', 'Balanço']];
 export const LOOPS = [['none', 'Nenhuma'], ['zoomin', 'Zoom lento +'], ['zoomout', 'Zoom lento −'], ['pulse', 'Pulsar'], ['float', 'Flutuar'], ['sway', 'Balançar'], ['spin', 'Girar']];
 export const TRANSITIONS = [['none', 'Corte seco'], ['fade', 'Escurecer'], ['white', 'Flash'], ['slideL', 'Deslizar ←'], ['slideR', 'Deslizar →'], ['slideU', 'Subir'], ['slideD', 'Descer'], ['zoomOut', 'Zoom −'], ['swing', 'Balanço'], ['zoom', 'Zoom'], ['spin', 'Girar'], ['wipe', 'Revelar']];
@@ -621,6 +622,7 @@ export class Engine {
     ctx.save();
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none';
     ctx.fillStyle = p.bg; ctx.fillRect(0, 0, W, H);
+    if (p.bgMode === 'gradient') { const g = GRAD_LIST[p.bgGrad || 0] || GRAD_LIST[0], gr = ctx.createLinearGradient(0, 0, W * 0.5, H); gr.addColorStop(0, g[0]); gr.addColorStop(1, g[1]); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H); }
     if (p.bgMode === 'image' && p.bgMedia) { const bm = this.images.get(p.bgMedia); if (!bm) this.loadImage(p.bgMedia); else { const k = Math.max(W / bm.width, H / bm.height); ctx.drawImage(bm, (W - bm.width * k) / 2, (H - bm.height * k) / 2, bm.width * k, bm.height * k); } }
     this.main = this.store.lane(0); this.mainIdx = new Map(this.main.map((c, i) => [c.id, i]));
     const act = (c) => t >= c.start - 1e-6 && t < c.start + c.dur - 1e-6;

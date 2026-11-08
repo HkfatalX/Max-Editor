@@ -34,5 +34,6 @@ export async function requestPerms() {
   if (!p || !st) return null;
   try { return await p.request({ aliases: neededAliases(st) }); } catch { return permStatus(); }
 }
+export async function storageInfo() { const p = plugin('MaxPermissions'); if (!p || !isNative()) return null; try { return await p.storageInfo(); } catch { return null; } }
 export function openSettings() { const p = plugin('MaxPermissions'); if (p) p.openSettings().catch(() => {}); }
 export function notify(title, body) { const p = plugin('MaxPermissions'); if (p) p.notify({ title, body }).catch(() => {}); }

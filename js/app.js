@@ -13,7 +13,7 @@ import { checkUpdate, applyUpdate, runningVersion } from './updater.js';
 import { analyze } from './analyze.js';
 import { Auth, validEmail } from './auth.js';
 import { TEMPLATES } from './templates.js';
-import { permStatus, requestPerms, allGranted, neededAliases, PERM_INFO, openSettings, notify } from './permissions.js';
+import { storageInfo, permStatus, requestPerms, allGranted, neededAliases, PERM_INFO, openSettings, notify } from './permissions.js';
 import { USERNAME_RE } from './config.js';
 import { $, $$, h, esc, toast, modal, confirmBox, promptBox, chips, btn, pushBack, removeBack } from './ui.js';
 
@@ -202,7 +202,7 @@ store.on('change', (e) => {
 store.on('select', (id) => {
   const c = id && store.clip(id);
   if (c && (engine.time < c.start - 1e-3 || engine.time >= c.start + c.dur)) engine.seek(c.start + Math.min(0.05, c.dur / 2));
-  if (sheetKind && sheetKind !== 'ratio' && sheetKind !== 'stickers' && sheetKind !== 'captions') closeSheet();
+  if (sheetKind && sheetKind !== 'ratio' && sheetKind !== 'stickers' && sheetKind !== 'captions' && sheetKind !== 'ai') closeSheet();
   renderToolbar(); engine.requestRender();
 });
 engine.on('state', () => { $('#btnPlay').innerHTML = icon(engine.playing ? 'pause' : 'play'); $('#btnPlay').setAttribute('aria-label', engine.playing ? 'Pausar' : 'Reproduzir'); });
@@ -240,6 +240,7 @@ function renderToolbar() {
     add('filter', 'Filtros', () => { if (atHead()) openSheet('filters'); });
     add('fx', 'Efeitos', () => { if (atHead()) openSheet('effects'); });
     add('music', 'Batida', () => { if (atHead()) openSheet('beat'); });
+    add('bot', 'Assistente', () => openSheet('ai'));
     add('spark', 'Inteligente', () => openSheet('smart'));
     add('smile', 'Adesivos', () => openSheet('stickers'));
     add('captions', 'Legendas', () => openSheet('captions'));
@@ -247,6 +248,7 @@ function renderToolbar() {
     return;
   }
   add('close', 'Fechar', () => store.select(null), 'back');
+  add('bot', 'Assistente', () => openSheet('ai'));
   add('split', 'Dividir', splitSelected);
   if (c.type === 'video' || c.type === 'audio') add('spark', 'Inteligente', () => openSheet('smart'));
   if (c.type === 'text') add('edit', 'Texto', () => openSheet('text'));
@@ -558,12 +560,13 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && Da
 $('#btnSettings').addEventListener('click', async () => {
   const ver = await runningVersion();
   const est = await storage.estimate();
+  const dev = await storageInfo();
   const persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted().catch(() => false) : false;
   const mb = (n) => (n >= 1073741824 ? (n / 1073741824).toFixed(1).replace('.', ',') + ' GB' : Math.round(n / 1048576) + ' MB');
   const q = prefs.get('previewQ', 'auto');
   const body = h('div', {},
     h('div', { class: 'row' }, h('div', {}, h('b', {}, `${APP_NAME} v${ver}`), h('div', { class: 'note' }, isNative() ? 'App Android (APK)' : 'Site / PWA')), btn('Verificar update', 'refresh', () => runUpdateCheck(true), 'small')),
-    h('div', { class: 'row' }, h('div', {}, h('b', {}, 'Armazenamento'), h('div', { class: 'note' }, est ? `${mb(est.usage || 0)} usados de ${mb(est.quota || 0)} · dados ${persisted || isNative() ? 'protegidos' : 'não protegidos'}` : 'indisponível')),
+    h('div', { class: 'row' }, h('div', {}, h('b', {}, 'Armazenamento'), h('div', { class: 'note' }, dev ? `Max Editor usa ${mb(est ? est.usage || 0 : 0)} · Aparelho: ${mb(dev.free)} livres de ${mb(dev.total)}` : est ? `Max Editor usa ${mb(est.usage || 0)} neste navegador · dados ${persisted ? 'protegidos' : 'não protegidos'}` : 'indisponível')),
       persisted || isNative() ? null : btn('Proteger', 'check', async () => { try { const ok = await navigator.storage.persist(); toast(ok ? 'Dados protegidos contra limpeza automática ✓' : 'O navegador não permitiu agora'); } catch { toast('Não suportado aqui'); } }, 'small')),
     h('div', { class: 'sec-t', style: 'margin-top:12px' }, 'Qualidade da prévia (não afeta a exportação)'),
     chips([['auto', 'Automática'], [480, 'Leve'], [640, 'Média'], [960, 'Alta']], q, (v) => { prefs.set('previewQ', v); toast('Vale a partir do próximo projeto que você abrir'); }),

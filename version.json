@@ -1,11 +1,10 @@
 {
-  "version": "1.5.0",
+  "version": "1.6.0",
   "notes": [
-    "O app sempre abre na tela inicial (o projeto fica salvo)",
-    "Botão + fixo na tela, com menu: vídeo, foto, áudio, sobrepor e foto de fundo",
-    "Projeto sempre tem fundo (cor ou foto); sem aviso pedindo mídia",
-    "Armazenamento mostrado em GB",
-    "Marcadores de batida mais limpos"
+    "Assistente IA (Groq) que ajuda e executa ações no projeto",
+    "Fundo em degradê e interface mais colorida",
+    "Importar fotos mais confiável (fotos gigantes e erro de leitura do Android)",
+    "Armazenamento mostra os GB reais do aparelho"
   ],
   "apkUrl": "https://github.com/HkfatalX/Max-Editor/releases/latest/download/MaxEditor.apk"
 }

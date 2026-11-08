@@ -39,7 +39,9 @@ function thumbFrom(src, sw, sh) {
 
 export async function probe(file, kind) {
   if (kind === 'image') {
-    const bmp = await createImageBitmap(file);
+    let bmp;
+    try { bmp = await createImageBitmap(file); }
+    catch { const im = new Image(); const u = URL.createObjectURL(file); try { im.src = u; await im.decode(); bmp = await createImageBitmap(im); } finally { URL.revokeObjectURL(u); } }
     const r = { dur: IMAGE_DUR, w: bmp.width, h: bmp.height, thumb: thumbFrom(bmp, bmp.width, bmp.height) };
     bmp.close(); return r;
   }
@@ -85,14 +87,24 @@ export async function importFiles(files, store, onProgress) {
       // Copia o arquivo para a memória: no Android o seletor devolve um "File" que pode ficar inválido (InvalidBlob)
       let blob = f;
       if (f.size <= 250 * 1048576) { try { blob = new Blob([await f.arrayBuffer()], { type: f.type || ({ video: 'video/mp4', image: 'image/jpeg', audio: 'audio/mpeg' })[kind] }); } catch { blob = f; } }
-      const rec = { id: uid(), projectId: store.p.id, name: f.name, kind, type: f.type || '', blob, size: f.size, added: Date.now(), ...meta };
-      await storage.putMedia(rec);
+      if (kind === 'image' && meta.w * meta.h > 16e6) { // foto gigante: reduz (poupa memória, evita travar/erro)
+        try { const k = 4096 / Math.max(meta.w, meta.h), src = await createImageBitmap(blob, { resizeWidth: Math.round(meta.w * k), resizeHeight: Math.round(meta.h * k), resizeQuality: 'high' });
+          const cn = document.createElement('canvas'); cn.width = src.width; cn.height = src.height; cn.getContext('2d').drawImage(src, 0, 0);
+          const nb = await new Promise((r) => cn.toBlob(r, 'image/jpeg', 0.92)); if (nb) { blob = nb; meta.w = src.width; meta.h = src.height; } src.close(); } catch { /* segue com o original */ }
+      }
+      const rec = { id: uid(), projectId: store.p.id, name: f.name, kind, type: blob.type || f.type || '', blob, size: blob.size, added: Date.now(), ...meta };
+      try { await storage.putMedia(rec); }
+      catch (e1) { // plano B: guarda como bytes (alguns Androids recusam gravar Blob)
+        if (/quota/i.test(String(e1 && (e1.name || e1.message)))) throw e1;
+        const buf = await blob.arrayBuffer(); await storage.putMedia({ ...rec, blob: null, buf }); rec.blob = new Blob([buf], { type: rec.type });
+      }
       rec.url = URL.createObjectURL(rec.blob);
       store.media.set(rec.id, rec);
       out.push(rec);
     } catch (e) {
       const quota = e && (e.name === 'QuotaExceededError' || /quota/i.test(String(e.message)));
-      errors.push(`${f.name}: ${quota ? 'sem espaço de armazenamento no aparelho' : (e.message || 'erro ao importar')}`);
+      const raw = String((e && (e.message || e.name)) || '');
+      errors.push(`${f.name}: ${quota ? 'sem espaço de armazenamento no aparelho' : /InvalidBlob|blob/i.test(raw) ? 'o Android não deixou ler o arquivo — tente de novo ou escolha pelo app Arquivos/Galeria' : (raw || 'erro ao importar')}`);
     }
   }
   if (onProgress) onProgress(list.length, list.length, '');
@@ -117,6 +129,7 @@ export async function loadProjectMedia(project) {
   const map = new Map();
   for (const id of ids) {
     const rec = await storage.getMedia(id);
+    if (rec && !rec.blob && rec.buf) rec.blob = new Blob([rec.buf], { type: rec.type });
     if (rec && rec.blob) { rec.url = URL.createObjectURL(rec.blob); map.set(id, rec); }
   }
   return map;

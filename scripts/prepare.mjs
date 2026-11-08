@@ -116,6 +116,19 @@ public class MaxPermissionsPlugin extends Plugin {
   }
 
   @PluginMethod
+  public void storageInfo(PluginCall call) {
+    try {
+      android.os.StatFs s = new android.os.StatFs(getContext().getFilesDir().getAbsolutePath());
+      JSObject o = new JSObject();
+      o.put("total", s.getTotalBytes());
+      o.put("free", s.getAvailableBytes());
+      call.resolve(o);
+    } catch (Exception e) {
+      call.reject("statfs");
+    }
+  }
+
+  @PluginMethod
   public void openSettings(PluginCall call) {
     Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
     i.setData(Uri.fromParts("package", getContext().getPackageName(), null));

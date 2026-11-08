@@ -3,13 +3,14 @@ import { RATIOS } from './config.js';
 import { FILTERS, ANIMS_IN, ANIMS_OUT, TRANSITIONS, BEATS, FONT_NAMES, LOOPS, BLENDS, MASKS } from './engine.js';
 import { makeClip, defaultText, uid } from './state.js';
 import { analyze, beats, silences } from './analyze.js';
+import { askAI } from './ai.js';
 import { MIN_DUR } from './config.js';
 import { h, slider, chips, swatches, btn, section, tabs, toggle, COLORS } from './ui.js';
 
 const pct = (v) => Math.round(v * 100) + '%';
 const fx2 = (v) => v.toFixed(2);
 
-export const SHEET_TITLES = { adjust: 'Ajustes', filters: 'Filtros', effects: 'Efeitos', keyframes: 'Keyframes', speed: 'Velocidade', volume: 'Volume', anim: 'Animações', trans: 'Transição', text: 'Texto', ratio: 'Projeto', stickers: 'Adesivos', captions: 'Legendas rápidas', smart: 'Inteligente', beat: 'Batida' };
+export const SHEET_TITLES = { adjust: 'Ajustes', filters: 'Filtros', effects: 'Efeitos', keyframes: 'Keyframes', speed: 'Velocidade', volume: 'Volume', anim: 'Animações', trans: 'Transição', text: 'Texto', ratio: 'Projeto', stickers: 'Adesivos', captions: 'Legendas rápidas', smart: 'Inteligente', beat: 'Batida', ai: 'Assistente IA' };
 
 const TEXT_PRESETS = [
   ['Clássico', { color: '#ffffff', stroke: '#000000', strokeW: 0.12, bg: '', font: 'sans', bold: true, italic: false, upper: false, shadow: 0, glow: 0 }],
@@ -215,6 +216,59 @@ function buildSmart(root, ctx) {
   if (!hasAudio) root.append(h('p', { class: 'note' }, 'Selecione um vídeo ou áudio na timeline para usar Batidas e Remover silêncio.'));
 }
 
+export const GRADS = [['#1a0b3b', '#ff4fd8'], ['#0f2027', '#2c5364'], ['#ff512f', '#dd2476'], ['#4776e6', '#8e54e9'], ['#00c6ff', '#0072ff'], ['#11998e', '#38ef7d'], ['#f7971e', '#ffd200'], ['#232526', '#414345']];
+const AI_FILTERS = new Set(FILTERS.map((f) => f.id));
+const clampN = (v, a, b, d) => { v = Number(v); return Number.isFinite(v) ? Math.min(b, Math.max(a, v)) : d; };
+
+// Executa as ações pedidas pela IA — só o que está nesta lista, com valores limitados
+function runAiActions(actions, ctx) {
+  const { store, engine } = ctx, done = [];
+  const sel = () => store.selected() || store.p.clips.filter((x) => x.type !== 'audio' && x.type !== 'text' && engine.time >= x.start && engine.time < x.start + x.dur)[0];
+  for (const a of actions) {
+    try {
+      switch (a && a.type) {
+        case 'ratio': if (RATIOS.some((r) => r.id === a.value)) { store.setRatio(a.value); done.push('Proporção ' + a.value); } break;
+        case 'text': { const t = String(a.text || '').slice(0, 120); if (t) { store.addClip(makeClip({ lane: 2, type: 'text', start: engine.time, dur: clampN(a.dur, 1, 15, 3), y: -0.25, animIn: 'pop', text: Object.assign(defaultText(t), { size: 0.09 }) })); done.push('Texto “' + t + '”'); } break; }
+        case 'captions': { const ls = (Array.isArray(a.lines) ? a.lines : []).map((x) => String(x).slice(0, 80)).filter(Boolean).slice(0, 12), d = clampN(a.dur, 1, 6, 2.5);
+          if (ls.length) { store.mutate((p) => { let t = engine.time; for (const l of ls) { p.clips.push(makeClip({ lane: 2, type: 'text', start: t, dur: d, y: 0.3, animIn: 'fade', animDur: 0.2, text: Object.assign(defaultText(l), { size: 0.055, bg: 'rgba(0,0,0,0.6)', stroke: '', strokeW: 0 }) })); t += d; } }); done.push(ls.length + ' legenda(s)'); } break; }
+        case 'filter': { const c = sel(); if (c && AI_FILTERS.has(a.id)) { store.update(c.id, { filter: a.id }); done.push('Filtro ' + a.id); } break; }
+        case 'speed': { const c = sel(); if (c && (c.type === 'video' || c.type === 'audio')) { const v = clampN(a.value, 0.25, 4, 1); store.update(c.id, { speed: v, dur: Math.max(0.1, (c.dur * c.speed) / v) }); done.push('Velocidade ' + v + 'x'); } break; }
+        case 'volume': { const c = sel(); if (c && (c.type === 'video' || c.type === 'audio')) { store.update(c.id, { vol: clampN(a.value, 0, 2, 1) }); done.push('Volume'); } break; }
+        case 'beat': { const eff = ['bop', 'zoom', 'shake', 'spin', 'wobble', 'none'].includes(a.effect) ? a.effect : 'bop', amt = clampN(a.amount, 0.2, 2.5, 1);
+          store.mutate((p) => { for (const x of p.clips) if (x.type !== 'audio') x.beat = Object.assign({}, x.beat, { type: eff, amt }); }); done.push('Efeito de batida: ' + eff); break; }
+        case 'background': if (/^#[0-9a-fA-F]{6}$/.test(a.color || '')) { store.setBg(a.color); store.setBgMode('color'); done.push('Fundo ' + a.color); } break;
+        case 'animIn': { const c = sel(); if (c && ANIMS_IN.some((x) => x[0] === a.id)) { store.update(c.id, { animIn: a.id }); done.push('Entrada ' + a.id); } break; }
+      }
+    } catch (e) { console.warn('ia', e); }
+  }
+  return done;
+}
+
+function buildAI(root, ctx) {
+  const { store, engine } = ctx;
+  const log = h('div', { class: 'ai-log' }), hist = [];
+  const add = (who, txt, cls = '') => { log.append(h('div', { class: 'ai-msg ' + who + ' ' + cls }, txt)); log.scrollTop = log.scrollHeight; };
+  add('bot', 'Oi! Eu ajudo a editar. Pergunte como fazer algo, ou peça: “faça HeadBop”, “muda pra 16:9”, “crie legendas sobre minha viagem”.');
+  const input = h('input', { class: 'field', type: 'text', maxlength: '700', placeholder: 'Escreva o que quer fazer…' });
+  const send = async (text) => {
+    text = (text || input.value).trim(); if (!text) return;
+    input.value = ''; add('me', text); const wait = h('div', { class: 'ai-msg bot wait' }, '…'); log.append(wait);
+    try {
+      const sc = store.selected();
+      const r = await askAI({ prompt: text, history: hist, context: { ratio: store.p.ratio, duracao: +store.duration().toFixed(1), clipes: store.p.clips.length, selecionado: sc ? sc.type : null, marcadores: (store.p.markers || []).length } });
+      wait.remove(); hist.push({ role: 'user', content: text }, { role: 'assistant', content: r.reply });
+      add('bot', r.reply);
+      const done = runAiActions(r.actions, ctx);
+      if (done.length) add('bot', '✓ Feito: ' + done.join(' · ') + ' (dá pra desfazer)', 'done');
+    } catch (e) { wait.remove(); add('bot', e.message || 'Não consegui agora.', 'err'); }
+  };
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+  const sugg = ['Como faço HeadBop?', 'Faça HeadBop nos clipes', 'Muda para 16:9', 'Deixa com cara de cinema', 'Cria legendas sobre minha viagem'];
+  root.append(log, h('div', { class: 'chips ai-sugg' }, ...sugg.map((s) => { const b = h('button', { class: 'chip', type: 'button' }, s); b.addEventListener('click', () => send(s)); return b; })),
+    h('div', { class: 'ai-row' }, input, btn('Enviar', 'spark', () => send(), 'primary')));
+  void engine;
+}
+
 export function buildPanel(kind, ctx) {
   const { store, engine } = ctx;
   const c = store.selected();
@@ -390,8 +444,9 @@ export function buildPanel(kind, ctx) {
         return box;
       } },
       { id: 'bg', label: 'Fundo', build: () => h('div', {},
-        chips([['color', 'Cor sólida'], ['blur', 'Vídeo desfocado'], ['image', 'Foto']], p.bgMode, (id) => { if (id === 'image' && !p.bgMedia) ctx.pickBg(); else store.setBgMode(id); }),
+        chips([['color', 'Cor sólida'], ['gradient', 'Degradê'], ['blur', 'Vídeo desfocado'], ['image', 'Foto']], p.bgMode, (id) => { if (id === 'image' && !p.bgMedia) ctx.pickBg(); else store.setBgMode(id); }),
         h('div', { class: 'btn-row' }, btn(p.bgMedia ? 'Trocar foto de fundo' : 'Escolher foto de fundo', 'image', () => ctx.pickBg()), p.bgMedia ? btn('Tirar foto', 'close', () => { store.mutate((q) => { q.bgMedia = ''; q.bgMode = 'color'; }); ctx.openSheet('ratio'); }) : null),
+        section('Degradês', h('div', { class: 'swatches' }, ...GRADS.map((g, i) => { const b = h('button', { class: 'sw' + (p.bgMode === 'gradient' && (p.bgGrad || 0) === i ? ' on' : ''), type: 'button', style: `background:linear-gradient(135deg,${g[0]},${g[1]})`, 'aria-label': 'degradê ' + (i + 1) }); b.addEventListener('click', () => { store.mutate((q) => { q.bgGrad = i; q.bgMode = 'gradient'; }); ctx.openSheet('ratio'); }); return b; }))),
         section('Cor de fundo', swatches(['#000000', '#ffffff', '#0b1020', '#1b1b1b', '#ff3b5c', '#2ec4ff', '#3ddc84', '#ffe14d', '#8f6bff'], p.bg, (col) => store.setBg(col))),
         h('p', { class: 'note' }, 'A cor de fundo sempre existe por baixo: se tirar a foto, ela volta. “Vídeo desfocado” preenche as faixas pretas com o próprio vídeo borrado.')) },
     ]));
@@ -430,6 +485,7 @@ export function buildPanel(kind, ctx) {
 
   else if (kind === 'smart') buildSmart(root, ctx);
   else if (kind === 'beat') buildBeat(root, ctx);
+  else if (kind === 'ai') buildAI(root, ctx);
 
   else root.append(h('p', { class: 'note' }, 'Selecione um clipe para editar.'));
   return root;
