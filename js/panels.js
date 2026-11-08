@@ -110,7 +110,7 @@ function buildBeat(root, ctx) {
     mk.push(t); mk.sort((a, b) => a - b); store.mutate((p) => { p.markers = mk; }, 'mark'); refresh();
   };
   const markBtn = h('button', { class: 'bigmark', type: 'button' }, '● Marcar batida');
-  markBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); mark(); markBtn.classList.add('hit'); setTimeout(() => markBtn.classList.remove('hit'), 120); });
+  markBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); mark(); try { navigator.vibrate && navigator.vibrate(12); } catch {} markBtn.classList.add('hit'); setTimeout(() => markBtn.classList.remove('hit'), 120); });
   refresh();
 
   root.append(tabs('beat', [
@@ -390,9 +390,10 @@ export function buildPanel(kind, ctx) {
         return box;
       } },
       { id: 'bg', label: 'Fundo', build: () => h('div', {},
-        chips([['color', 'Cor sólida'], ['blur', 'Vídeo desfocado']], p.bgMode, (id) => store.setBgMode(id)),
+        chips([['color', 'Cor sólida'], ['blur', 'Vídeo desfocado'], ['image', 'Foto']], p.bgMode, (id) => { if (id === 'image' && !p.bgMedia) ctx.pickBg(); else store.setBgMode(id); }),
+        h('div', { class: 'btn-row' }, btn(p.bgMedia ? 'Trocar foto de fundo' : 'Escolher foto de fundo', 'image', () => ctx.pickBg()), p.bgMedia ? btn('Tirar foto', 'close', () => { store.mutate((q) => { q.bgMedia = ''; q.bgMode = 'color'; }); ctx.openSheet('ratio'); }) : null),
         section('Cor de fundo', swatches(['#000000', '#ffffff', '#0b1020', '#1b1b1b', '#ff3b5c', '#2ec4ff', '#3ddc84', '#ffe14d', '#8f6bff'], p.bg, (col) => store.setBg(col))),
-        h('p', { class: 'note' }, '“Vídeo desfocado” preenche as faixas pretas com o próprio vídeo borrado, como no CapCut.')) },
+        h('p', { class: 'note' }, 'A cor de fundo sempre existe por baixo: se tirar a foto, ela volta. “Vídeo desfocado” preenche as faixas pretas com o próprio vídeo borrado.')) },
     ]));
   }
 

@@ -1,10 +1,11 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "notes": [
-    "Corrigido: erro ao adicionar imagem (InvalidBlob) e prévia preta no Android",
-    "HeadBop novo em 3 passos: Ritmo (detectar, tocar e marcar, BPM), Estilo e Ajuste fino",
-    "Converter batida em keyframes editáveis",
-    "Filtros, Efeitos e Batida direto na barra inicial"
+    "O app sempre abre na tela inicial (o projeto fica salvo)",
+    "Botão + fixo na tela, com menu: vídeo, foto, áudio, sobrepor e foto de fundo",
+    "Projeto sempre tem fundo (cor ou foto); sem aviso pedindo mídia",
+    "Armazenamento mostrado em GB",
+    "Marcadores de batida mais limpos"
   ],
   "apkUrl": "https://github.com/HkfatalX/Max-Editor/releases/latest/download/MaxEditor.apk"
 }

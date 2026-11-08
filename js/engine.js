@@ -621,6 +621,7 @@ export class Engine {
     ctx.save();
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.filter = 'none';
     ctx.fillStyle = p.bg; ctx.fillRect(0, 0, W, H);
+    if (p.bgMode === 'image' && p.bgMedia) { const bm = this.images.get(p.bgMedia); if (!bm) this.loadImage(p.bgMedia); else { const k = Math.max(W / bm.width, H / bm.height); ctx.drawImage(bm, (W - bm.width * k) / 2, (H - bm.height * k) / 2, bm.width * k, bm.height * k); } }
     this.main = this.store.lane(0); this.mainIdx = new Map(this.main.map((c, i) => [c.id, i]));
     const act = (c) => t >= c.start - 1e-6 && t < c.start + c.dur - 1e-6;
     this.bounds.clear();

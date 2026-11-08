@@ -113,6 +113,7 @@ export function textClip(start) {
 
 export async function loadProjectMedia(project) {
   const ids = new Set(project.clips.map((c) => c.mediaId).filter(Boolean));
+  if (project.bgMedia) ids.add(project.bgMedia);
   const map = new Map();
   for (const id of ids) {
     const rec = await storage.getMedia(id);

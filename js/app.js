@@ -179,14 +179,14 @@ function refreshUi() {
   $('#projName').textContent = store.p.name;
   $('#btnUndo').disabled = !store.canUndo; $('#btnRedo').disabled = !store.canRedo;
   $('#btnRatio').textContent = store.p.ratio;
-  $('#emptyHint').hidden = store.p.clips.length > 0;
+  $('#emptyHint').hidden = true;
   updateTime();
 }
 function updateTime() { $('#timeLabel').textContent = `${fmtTime(engine.time)} / ${fmtTime(store.duration())}`; }
 
 tl = new Timeline($('#timeline'), store, engine);
 tl.onTime = updateTime;
-tl.onAddMain = () => pick('main');
+tl.onAddMain = () => addMenu();
 tl.onTransition = (id) => { store.select(id); openSheet('trans'); };
 
 store.on('change', (e) => {
@@ -276,7 +276,7 @@ function addText() {
 // ----- painéis (folha inferior / lateral no PC) -----
 function openSheet(kind, silent) {
   sheetKind = kind;
-  const panel = buildPanel(kind, { store, engine, toast, freeze: freezeFrame, saveFrame, closeSheet: () => closeSheet(), openSheet: (k) => openSheet(k, true) });
+  const panel = buildPanel(kind, { store, engine, toast, pickBg, freeze: freezeFrame, saveFrame, closeSheet: () => closeSheet(), openSheet: (k) => openSheet(k, true) });
   $('#sheetBody').replaceChildren(panel);
   $('#sheetTitle').textContent = SHEET_TITLES[kind] || '';
   $('#sheet').hidden = false; $('#editor').classList.add('sheet-open');
@@ -297,9 +297,23 @@ $('#sheetTitle').textContent = 'Propriedades';
 // ======================= importação =======================
 const fileIn = $('#fileIn');
 let pendingTarget = 'main', pendingAt = null;
-function pick(target, at) {
+function addMenu() {
+  const m = modal({ title: 'Adicionar', body: h('div', { class: 'addmenu' },
+    ...[['video', 'Vídeo', 'video/*', 'main'], ['image', 'Foto', 'image/*', 'main'], ['music', 'Áudio / música', 'audio/*', 'audio'], ['layers', 'Sobrepor (vídeo ou foto)', 'video/*,image/*', 'overlay'], ['image', 'Foto de fundo', 'image/*', 'bg']].map(([ic, label, acc, tg]) => {
+      const b = h('button', { class: 'addopt', type: 'button', html: icon(ic) }, h('span', {}, label));
+      b.addEventListener('click', () => { m.close(); if (tg === 'bg') pickBg(); else pick(tg, null, acc); });
+      return b;
+    })) });
+}
+async function pickBg() {
+  const f = await pickFiles('image/*'); if (!f.length) return;
+  const { media, errors } = await importFiles([f[0]], store);
+  if (!media.length) { toast(errors[0] || 'Não consegui abrir a foto'); return; }
+  store.mutate((p) => { p.bgMedia = media[0].id; p.bgMode = 'image'; }); engine.loadImage(media[0].id); toast('Foto de fundo definida ✓');
+}
+function pick(target, at, accept) {
   pendingTarget = target; pendingAt = at == null ? null : at;
-  fileIn.accept = target === 'audio' ? 'audio/*' : 'video/*,image/*';
+  fileIn.accept = accept || (target === 'audio' ? 'audio/*' : 'video/*,image/*');
   fileIn.value = '';
   fileIn.click();
 }
@@ -545,12 +559,12 @@ $('#btnSettings').addEventListener('click', async () => {
   const ver = await runningVersion();
   const est = await storage.estimate();
   const persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted().catch(() => false) : false;
-  const mb = (n) => (n / 1048576).toFixed(0) + ' MB';
+  const mb = (n) => (n >= 1073741824 ? (n / 1073741824).toFixed(1).replace('.', ',') + ' GB' : Math.round(n / 1048576) + ' MB');
   const q = prefs.get('previewQ', 'auto');
   const body = h('div', {},
     h('div', { class: 'row' }, h('div', {}, h('b', {}, `${APP_NAME} v${ver}`), h('div', { class: 'note' }, isNative() ? 'App Android (APK)' : 'Site / PWA')), btn('Verificar update', 'refresh', () => runUpdateCheck(true), 'small')),
-    h('div', { class: 'row' }, h('div', {}, h('b', {}, 'Armazenamento'), h('div', { class: 'note' }, est ? `${mb(est.usage || 0)} usados de ${mb(est.quota || 0)} · dados ${persisted ? 'protegidos' : 'não protegidos'}` : 'indisponível')),
-      persisted ? null : btn('Proteger', 'check', async () => { try { const ok = await navigator.storage.persist(); toast(ok ? 'Dados protegidos contra limpeza automática ✓' : 'O navegador não permitiu agora'); } catch { toast('Não suportado aqui'); } }, 'small')),
+    h('div', { class: 'row' }, h('div', {}, h('b', {}, 'Armazenamento'), h('div', { class: 'note' }, est ? `${mb(est.usage || 0)} usados de ${mb(est.quota || 0)} · dados ${persisted || isNative() ? 'protegidos' : 'não protegidos'}` : 'indisponível')),
+      persisted || isNative() ? null : btn('Proteger', 'check', async () => { try { const ok = await navigator.storage.persist(); toast(ok ? 'Dados protegidos contra limpeza automática ✓' : 'O navegador não permitiu agora'); } catch { toast('Não suportado aqui'); } }, 'small')),
     h('div', { class: 'sec-t', style: 'margin-top:12px' }, 'Qualidade da prévia (não afeta a exportação)'),
     chips([['auto', 'Automática'], [480, 'Leve'], [640, 'Média'], [960, 'Alta']], q, (v) => { prefs.set('previewQ', v); toast('Vale a partir do próximo projeto que você abrir'); }),
     h('p', { class: 'note' }, 'Dica: a prévia reduz sozinha se o aparelho começar a engasgar.'));
@@ -731,11 +745,7 @@ async function leaveApp() {
   if (!u) { setAuthMode('in'); $('#auth').hidden = false; return; }
   if (hr && hr.type === 'recovery') { setTimeout(() => { $('#home').hidden = false; setHomeTab('profile'); toast('Defina uma nova senha em “Alterar senha”', 6000); }, 400); }
   else if (hr && !hr.error) setTimeout(() => toast('E-mail confirmado ✓'), 400);
-  const last = session.getOpen();
-  if (last) {
-    try { const rec = await storage.loadProject(last); if (rec && (!rec.owner || rec.owner === u.id)) { await openProject(last, { auto: true }); return; } } catch (e) { console.error(e); }
-    session.clearOpen();
-  }
+  session.clearOpen(); // o app sempre abre na tela inicial; o projeto fica salvo e aparece em “Meus projetos”
   enterApp();
 })();
 void FILTERS; void IMAGE_DUR;

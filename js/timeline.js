@@ -14,12 +14,15 @@ export class Timeline {
         <canvas class="tl-ruler"></canvas>
         <div class="tl-scroll"><div class="tl-inner">${LANES.map((l) => `<div class="lane" data-lane="${l.id}"></div>`).join('')}</div></div>
         <div class="tl-playhead"></div>
+        <button class="add-end" type="button" aria-label="Adicionar mídia">+</button>
       </div>`;
     this.root = root;
     this.ruler = root.querySelector('.tl-ruler');
     this.scroll = root.querySelector('.tl-scroll');
     this.inner = root.querySelector('.tl-inner');
     this.lanes = [...root.querySelectorAll('.lane')];
+    this.addBtn = root.querySelector('.add-end');
+    this.addBtn.addEventListener('click', () => { if (this.onAddMain) this.onAddMain(); });
     this.programmatic = 0; this.drag = null; this.pointers = new Map(); this.pinch = null;
 
     this.scroll.addEventListener('scroll', () => this.onScroll(), { passive: true });
@@ -110,8 +113,8 @@ export class Timeline {
       for (const c of this.store.p.clips.filter((x) => x.lane === n)) lane.appendChild(this.clipEl(c, c.id === sel));
     }
     const l0 = this.lanes.find((l) => +l.dataset.lane === 0);
+    if (l0) { const lr = l0.getBoundingClientRect(), mr = this.addBtn.parentElement.getBoundingClientRect(); this.addBtn.style.top = (lr.top - mr.top + Math.max(0, (lr.height - 34) / 2)) + 'px'; }
     if (l0) { const mainL = this.store.lane(0); mainL.forEach((c, i) => { if (!i) return; const tb = document.createElement('button'); tb.className = 'trbtn' + (c.trans !== 'none' ? ' on' : ''); tb.type = 'button'; tb.dataset.id = c.id; tb.setAttribute('aria-label', 'Transição'); tb.style.left = this.x(c.start) + 'px'; tb.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M4 6l8 6-8 6zM20 6l-8 6 8 6z" fill="currentColor"/></svg>'; l0.appendChild(tb); }); }
-    if (l0) { const b = document.createElement('button'); b.className = 'add-end'; b.type = 'button'; b.textContent = '+'; b.setAttribute('aria-label', 'Adicionar mídia'); b.style.left = (this.x(this.store.duration()) + 10) + 'px'; l0.appendChild(b); }
     this.inner.querySelectorAll('.mk').forEach((e) => e.remove());
     for (const t of this.store.p.markers || []) { const i = document.createElement('i'); i.className = 'mk'; i.style.left = this.x(t) + 'px'; this.inner.appendChild(i); }
     this.syncScroll(true);
@@ -254,7 +257,6 @@ export class Timeline {
     this.scroll.addEventListener('click', (e) => {
       if (this._swallowClick) { this._swallowClick = false; return; }
       const tbn = e.target.closest('.trbtn'); if (tbn) { if (this.onTransition) this.onTransition(tbn.dataset.id); return; }
-      if (e.target.closest('.add-end')) { if (this.onAddMain) this.onAddMain(); return; }
       const clipEl = e.target.closest('.clip');
       if (clipEl && !e.target.classList.contains('h')) this.store.select(clipEl.dataset.id);
     });
